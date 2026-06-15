@@ -173,7 +173,7 @@ export type PerformanceHistoryRow = {
 const DEV_PC_IP = "127.0.0.1";
 
 export const API_BASE =
-  "https://escape-diameter-analyze-spies.trycloudflare.com";
+  "https://volleyball-katie-tan-albert.trycloudflare.com";
 
 async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

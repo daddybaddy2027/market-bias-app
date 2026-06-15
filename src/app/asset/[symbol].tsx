@@ -25,6 +25,12 @@ import {
   getAssetSymbol,
 } from "../../services/api";
 
+import {
+  ENABLE_PRO_LOCKS,
+  getModelTier,
+} from "../../config/access";
+
+
 type TabKey = "projection" | "history";
 
 type ParsedRoute = {
@@ -676,6 +682,21 @@ export default function AssetDetailScreen() {
             : "Direction only",
       });
 
+      const tier = getModelTier(
+        getAssetSymbol(asset),
+        horizonH
+      );
+
+      if (
+        ENABLE_PRO_LOCKS &&
+        tier === "Pro"
+      ) {
+        setCandles([]);
+        setSummary(null);
+        setHistory([]);
+        return;
+      }
+
       const [candlesResult, summaryResult, historyResult] =
         await Promise.allSettled([
           fetchCandles(getAssetSymbol(asset), 96),
@@ -758,6 +779,69 @@ export default function AssetDetailScreen() {
   }
 
   const asset = detail.item;
+
+  const directTier = getModelTier(
+    detail.symbol,
+    detail.horizonH
+  );
+
+  const directlyLocked =
+    ENABLE_PRO_LOCKS &&
+    directTier === "Pro";
+
+  if (directlyLocked) {
+    return (
+      <SafeAreaView className="flex-1 bg-black px-5 pt-8">
+        <Pressable
+          onPress={() => router.back()}
+          className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 active:opacity-70"
+        >
+          <Text className="font-bold text-zinc-300">
+            ← Back
+          </Text>
+        </Pressable>
+
+        <View className="rounded-3xl border border-violet-500/40 bg-violet-500/10 p-6">
+          <View className="self-start rounded-full border border-violet-400/40 bg-violet-500/15 px-3 py-1">
+            <Text className="text-xs font-black uppercase tracking-[3px] text-violet-300">
+              Pro model
+            </Text>
+          </View>
+
+          <Text className="mt-5 text-4xl font-black text-white">
+            {detail.symbol} {detail.horizonH}h
+          </Text>
+
+          <Text className="mt-2 text-sm text-zinc-500">
+            {asset.display} · {asset.model_family ?? asset.source ?? "model"}
+          </Text>
+
+          <Text className="mt-5 text-base leading-7 text-zinc-300">
+            The current bias, probability zone, confidence and
+            verified prediction history are part of AI Market
+            Expert Pro.
+          </Text>
+
+          <View className="mt-5 rounded-2xl border border-zinc-800 bg-black/30 p-4">
+            <Text className="text-sm leading-6 text-zinc-400">
+              Pro subscriptions are not active yet. This page is
+              currently a public-beta preview of the planned
+              €9.99 monthly plan.
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={() => router.push("/pricing" as never)}
+            className="mt-6 rounded-2xl border border-violet-400/50 bg-violet-500/20 px-5 py-4 active:opacity-70"
+          >
+            <Text className="text-center font-black text-violet-200">
+              View Pro plan
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
