@@ -55,6 +55,52 @@ type CardAsset = {
   accuracyN: number;
 };
 
+const PRO_MODEL_PREVIEWS = [
+  {
+    symbol: "EURJPY",
+    horizonH: 12,
+    display: "Euro / Japanese Yen",
+    modelFamily: "legacy_jpy_12h",
+  },
+  {
+    symbol: "EURUSD",
+    horizonH: 3,
+    display: "Euro / US Dollar",
+    modelFamily: "prod_v1",
+  },
+  {
+    symbol: "GBPAUD",
+    horizonH: 3,
+    display: "British Pound / Australian Dollar",
+    modelFamily: "prod_v1",
+  },
+] as const;
+
+function makeLockedPreview(
+  item: (typeof PRO_MODEL_PREVIEWS)[number]
+): CardAsset {
+  return {
+    key: `${item.symbol}-${item.horizonH}`,
+    routeSymbol: `${item.symbol}-${item.horizonH}h`,
+    symbol: `${item.symbol} ${item.horizonH}h`,
+    display: item.display,
+    horizonH: item.horizonH,
+    bias: "Neutral",
+    confidence: 0,
+    expectedMove: "Unlock Pro",
+    expectedRange: "Hidden",
+    status: "Pro model",
+    explanation:
+      "This model is available to active Pro accounts. Free users can see that the model exists, but its current output and verified history remain protected by database access rules.",
+    drivers: [],
+    modelFamily: item.modelFamily,
+    tier: "Pro",
+    locked: true,
+    liveAccuracy: null,
+    accuracyN: 0,
+  };
+}
+
 function pct(
   value?: number | null,
   digits = 0
@@ -791,6 +837,7 @@ export default function HomeScreen() {
   }
 
   useEffect(() => {
+    setLoading(true);
     load();
 
     const timer = setInterval(
@@ -800,7 +847,10 @@ export default function HomeScreen() {
 
     return () =>
       clearInterval(timer);
-  }, []);
+  }, [
+    isAuthenticated,
+    isPro,
+  ]);
 
   const performanceMap =
     useMemo(
@@ -818,31 +868,61 @@ export default function HomeScreen() {
 
   const visibleAssets =
     useMemo(() => {
-      return (data?.assets ?? [])
-        .filter(
-          (item) =>
-            item.visible !== false
-        )
-        .filter((item) => {
-          const symbol =
-            getAssetSymbol(item);
-
-          const horizon =
-            item.horizon_h ?? 12;
-
-          return isModelPubliclyAllowed(
-            symbol,
-            horizon
-          );
-        })
-        .map((item) =>
-          normalizeAsset(
-            item,
-            performanceMap,
-            isPro
+      const liveAssets =
+        (data?.assets ?? [])
+          .filter(
+            (item) =>
+              item.visible !== false
           )
-        )
-        .sort((a, b) => {
+          .filter((item) => {
+            const symbol =
+              getAssetSymbol(item);
+
+            const horizon =
+              item.horizon_h ?? 12;
+
+            return isModelPubliclyAllowed(
+              symbol,
+              horizon
+            );
+          })
+          .map((item) =>
+            normalizeAsset(
+              item,
+              performanceMap,
+              isPro
+            )
+          );
+
+      if (!isPro) {
+        const existingKeys =
+          new Set(
+            liveAssets.map(
+              (item) => item.key
+            )
+          );
+
+        for (
+          const preview of
+            PRO_MODEL_PREVIEWS
+        ) {
+          const key =
+            `${preview.symbol}-${preview.horizonH}`;
+
+          if (
+            !existingKeys.has(key)
+          ) {
+            liveAssets.push(
+              makeLockedPreview(
+                preview
+              )
+            );
+          }
+        }
+      }
+
+      return liveAssets.sort(
+        (a, b) => {
           if (a.tier !== b.tier) {
             return a.tier === "Free"
               ? -1
@@ -852,7 +932,8 @@ export default function HomeScreen() {
           return a.key.localeCompare(
             b.key
           );
-        });
+        }
+      );
     }, [
       data?.assets,
       performanceMap,
@@ -888,7 +969,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-black px-5">
         <Text className="text-2xl font-black text-red-300">
-          API connection problem
+          Supabase data problem
         </Text>
 
         <Text className="mt-3 text-center text-sm leading-6 text-zinc-400">

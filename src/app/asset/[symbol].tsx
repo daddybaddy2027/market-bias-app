@@ -47,6 +47,39 @@ type AssetDetail = {
   modelUsage: string;
 };
 
+const ASSET_DISPLAY_NAMES: Record<string, string> = {
+  EURUSD: "Euro / US Dollar",
+  EURJPY: "Euro / Japanese Yen",
+  GBPJPY: "British Pound / Japanese Yen",
+  GBPAUD: "British Pound / Australian Dollar",
+};
+
+function makeLockedAsset(
+  symbol: string,
+  horizonH: number
+): ApiAsset {
+  return {
+    asset: symbol,
+    symbol,
+    display:
+      ASSET_DISPLAY_NAMES[symbol] ??
+      symbol,
+    horizon_h: horizonH,
+    bias: "Neutral",
+    expectedMove: "Unlock Pro",
+    expectedRange: "Hidden",
+    confidence: 0,
+    signal_strength: "Pro model",
+    status: "Pro model",
+    model_status: "pro_locked",
+    visible: true,
+    usable: false,
+    drivers: [],
+    explanation:
+      "The current forecast is protected by the active Pro subscription rules.",
+  };
+}
+
 function parseRouteSymbol(raw: string): ParsedRoute {
   const cleaned = raw.toUpperCase();
   const match = cleaned.match(/^([A-Z0-9]+)-(\d+)H$/);
@@ -633,7 +666,10 @@ function HistoryTab({
 }
 
 export default function AssetDetailScreen() {
-  const { isPro } = useAuth();
+  const {
+    isAuthenticated,
+    isPro,
+  } = useAuth();
 
   const params = useLocalSearchParams<{ symbol?: string }>();
   const rawSymbol = String(params.symbol ?? "").toUpperCase();
@@ -652,11 +688,48 @@ export default function AssetDetailScreen() {
 
   async function load(isRefresh = false) {
     try {
-      if (isRefresh) setRefreshing(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
       setFatalError(null);
       setOptionalError(null);
 
-      const latest = await fetchMarketState();
+      const routeHorizon =
+        parsed.horizonH ?? 12;
+
+      if (
+        isModelLocked(
+          parsed.asset,
+          routeHorizon,
+          isPro
+        )
+      ) {
+        const lockedAsset =
+          makeLockedAsset(
+            parsed.asset,
+            routeHorizon
+          );
+
+        setMarketState(null);
+        setDetail({
+          item: lockedAsset,
+          symbol: parsed.asset,
+          horizonH: routeHorizon,
+          confidence: 0,
+          modelUsage: "Pro",
+        });
+        setCandles([]);
+        setSummary(null);
+        setHistory([]);
+        return;
+      }
+
+      const latest =
+        await fetchMarketState();
+
       setMarketState(latest);
 
       const asset = latest.assets.find((item) => {
@@ -684,19 +757,6 @@ export default function AssetDetailScreen() {
             ? "Direction + Range"
             : "Direction only",
       });
-
-      if (
-        isModelLocked(
-          getAssetSymbol(asset),
-          horizonH,
-          isPro
-        )
-      ) {
-        setCandles([]);
-        setSummary(null);
-        setHistory([]);
-        return;
-      }
 
       const [candlesResult, summaryResult, historyResult] =
         await Promise.allSettled([
@@ -823,18 +883,26 @@ export default function AssetDetailScreen() {
 
           <View className="mt-5 rounded-2xl border border-zinc-800 bg-black/30 p-4">
             <Text className="text-sm leading-6 text-zinc-400">
-              Pro subscriptions are not active yet. This page is
-              currently a public-beta preview of the planned
-              €9.99 monthly plan.
+              Sign in with an active Pro account to unlock this
+              model. The forecast payload and verified history
+              are protected in Supabase by row-level access rules.
             </Text>
           </View>
 
           <Pressable
-            onPress={() => router.push("/pricing" as never)}
+            onPress={() =>
+              router.push(
+                (isAuthenticated
+                  ? "/pricing"
+                  : "/login") as never
+              )
+            }
             className="mt-6 rounded-2xl border border-violet-400/50 bg-violet-500/20 px-5 py-4 active:opacity-70"
           >
             <Text className="text-center font-black text-violet-200">
-              View Pro plan
+              {isAuthenticated
+                ? "View Pro plan"
+                : "Sign in"}
             </Text>
           </Pressable>
         </View>
