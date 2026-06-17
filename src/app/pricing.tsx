@@ -9,6 +9,8 @@ import {
   View,
 } from "react-native";
 
+import { useAuth } from "../providers/AuthProvider";
+
 import {
   FREE_MODEL_KEYS,
   PRO_MODEL_KEYS,
@@ -63,6 +65,11 @@ function FeatureRow({
 }
 
 export default function PricingScreen() {
+  const {
+    isAuthenticated,
+    isPro,
+  } = useAuth();
+
   return (
     <SafeAreaView
       className="flex-1 bg-black"
@@ -218,22 +225,32 @@ export default function PricingScreen() {
 
           <View className="mt-6 rounded-2xl border border-violet-400/40 bg-black/30 p-4">
             <Text className="text-base font-black text-violet-200">
-              Login and payments are coming in Phase 2
+              Login is now available
             </Text>
 
             <Text className="mt-2 text-sm leading-6 text-zinc-400">
-              No payment is collected yet. The current Pro lock is
-              a public-beta preview while authentication and secure
-              backend access are being built.
+              Create a Free account now. Pro subscriptions are the next
+              step and will activate automatically after payment
+              integration is completed.
             </Text>
           </View>
 
           <Pressable
-            disabled
-            className="mt-5 rounded-2xl border border-violet-500/40 bg-violet-500/15 px-5 py-4 opacity-80"
+            onPress={() =>
+              router.push(
+                (isAuthenticated
+                  ? "/account"
+                  : "/login") as never
+              )
+            }
+            className="mt-5 rounded-2xl border border-violet-500/40 bg-violet-500/15 px-5 py-4 active:opacity-70"
           >
             <Text className="text-center font-black text-violet-200">
-              Pro subscriptions coming soon
+              {isAuthenticated
+                ? isPro
+                  ? "Open Pro account"
+                  : "Open Free account"
+                : "Sign in or create account"}
             </Text>
           </Pressable>
         </Card>
@@ -257,3 +274,4 @@ export default function PricingScreen() {
     </SafeAreaView>
   );
 }
+

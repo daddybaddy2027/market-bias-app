@@ -1,29 +1,18 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    Platform,
-    Pressable,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../providers/AuthProvider";
-
-function Card({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <View className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-      {children}
-    </View>
-  );
-}
 
 export default function AccountScreen() {
   const {
@@ -50,8 +39,9 @@ export default function AccountScreen() {
     useState<string | null>(null);
 
   async function refresh() {
+    setRefreshing(true);
+
     try {
-      setRefreshing(true);
       await refreshProfile();
     } finally {
       setRefreshing(false);
@@ -66,7 +56,9 @@ export default function AccountScreen() {
     const freeResult =
       await supabase
         .from("market_state_latest")
-        .select("tier, generated_at, payload")
+        .select(
+          "tier, generated_at, payload"
+        )
         .eq("tier", "free")
         .maybeSingle();
 
@@ -74,6 +66,7 @@ export default function AccountScreen() {
       setTestError(
         `Free query failed: ${freeResult.error.message}`
       );
+
       return;
     }
 
@@ -84,7 +77,9 @@ export default function AccountScreen() {
     const proResult =
       await supabase
         .from("market_state_latest")
-        .select("tier, generated_at, payload")
+        .select(
+          "tier, generated_at, payload"
+        )
         .eq("tier", "pro")
         .maybeSingle();
 
@@ -92,6 +87,7 @@ export default function AccountScreen() {
       setTestError(
         `Pro query failed: ${proResult.error.message}`
       );
+
       return;
     }
 
@@ -105,8 +101,17 @@ export default function AccountScreen() {
     profileLoading
   ) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-black">
-        <Text className="font-bold text-zinc-300">
+      <SafeAreaView
+        style={styles.loadingPage}
+      >
+        <ActivityIndicator
+          size="large"
+          color="#6ee7b7"
+        />
+
+        <Text
+          style={styles.loadingText}
+        >
           Loading account...
         </Text>
       </SafeAreaView>
@@ -115,96 +120,131 @@ export default function AccountScreen() {
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-black px-5">
-        <Text className="text-3xl font-black text-white">
-          No active session
-        </Text>
-
-        <Text className="mt-3 text-center text-sm leading-6 text-zinc-400">
-          Sign in to test the Free and Pro access flow.
-        </Text>
-
-        <Pressable
-          onPress={() =>
-            router.replace(
-              "/login" as never
-            )
-          }
-          className="mt-5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3"
+      <SafeAreaView
+        style={styles.page}
+      >
+        <View
+          style={styles.emptyCard}
         >
-          <Text className="font-black text-emerald-300">
-            Open login
+          <Text
+            style={styles.title}
+          >
+            No active session
           </Text>
-        </Pressable>
+
+          <Text
+            style={styles.body}
+          >
+            Sign in to test Free and Pro access.
+          </Text>
+
+          <Pressable
+            onPress={() =>
+              router.replace(
+                "/login" as never
+              )
+            }
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed &&
+                styles.pressed,
+            ]}
+          >
+            <Text
+              style={
+                styles.primaryButtonText
+              }
+            >
+              Open login
+            </Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView
-      className="flex-1 bg-black"
-      style={
-        Platform.OS === "web"
-          ? ({
-              height: "100vh",
-            } as any)
-          : undefined
-      }
+      style={styles.page}
     >
       <ScrollView
-        contentContainerClassName="px-5 pb-24 pt-4"
+        contentContainerStyle={
+          styles.scrollContent
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refresh}
-            tintColor="#34d399"
+            tintColor="#6ee7b7"
           />
         }
       >
         <Pressable
           onPress={() =>
-            router.back()
+            router.replace(
+              "/" as never
+            )
           }
-          className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3"
+          style={({ pressed }) => [
+            styles.backButton,
+            pressed &&
+              styles.pressed,
+          ]}
         >
-          <Text className="font-bold text-zinc-300">
-            ← Back
+          <Text
+            style={styles.backText}
+          >
+            ← Back to dashboard
           </Text>
         </Pressable>
 
-        <Text className="text-xs font-black uppercase tracking-[4px] text-emerald-400">
-          Account
+        <Text
+          style={styles.eyebrow}
+        >
+          ACCOUNT
         </Text>
 
-        <Text className="mt-4 text-4xl font-black text-white">
+        <Text
+          style={styles.title}
+        >
           {isPro
             ? "Pro access"
             : "Free access"}
         </Text>
 
-        <Text className="mt-3 text-base text-zinc-400">
+        <Text
+          style={styles.email}
+        >
           {user?.email}
         </Text>
 
-        <Card>
-          <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-black text-white">
+        <View
+          style={styles.card}
+        >
+          <View
+            style={styles.row}
+          >
+            <Text
+              style={styles.cardTitle}
+            >
               Current plan
             </Text>
 
             <View
-              className={`rounded-full border px-3 py-1 ${
+              style={[
+                styles.planBadge,
                 isPro
-                  ? "border-violet-500/40 bg-violet-500/10"
-                  : "border-emerald-500/40 bg-emerald-500/10"
-              }`}
+                  ? styles.proBadge
+                  : styles.freeBadge,
+              ]}
             >
               <Text
-                className={`text-xs font-black ${
+                style={[
+                  styles.planBadgeText,
                   isPro
-                    ? "text-violet-300"
-                    : "text-emerald-300"
-                }`}
+                    ? styles.proText
+                    : styles.freeText,
+                ]}
               >
                 {isPro
                   ? "PRO"
@@ -213,43 +253,79 @@ export default function AccountScreen() {
             </View>
           </View>
 
-          <Text className="mt-4 text-sm leading-6 text-zinc-400">
-            Database plan: {profile?.plan ?? "profile missing"}
+          <Text
+            style={styles.meta}
+          >
+            Database plan:{" "}
+            {profile?.plan ??
+              "profile missing"}
           </Text>
 
-          <Text className="mt-2 text-sm leading-6 text-zinc-400">
-            Subscription status: {profile?.subscription_status ?? "unknown"}
+          <Text
+            style={styles.meta}
+          >
+            Subscription status:{" "}
+            {profile
+              ?.subscription_status ??
+              "unknown"}
           </Text>
 
-          <Text className="mt-2 text-sm leading-6 text-zinc-400">
-            Access expires: {profile?.subscription_expires_at ?? "not set"}
+          <Text
+            style={styles.meta}
+          >
+            Access expires:{" "}
+            {profile
+              ?.subscription_expires_at ??
+              "not set"}
           </Text>
-        </Card>
+        </View>
 
         <Pressable
           onPress={testRls}
-          className="mt-5 rounded-2xl border border-sky-500/40 bg-sky-500/10 px-5 py-4"
+          style={({ pressed }) => [
+            styles.testButton,
+            pressed &&
+              styles.pressed,
+          ]}
         >
-          <Text className="text-center font-black text-sky-300">
+          <Text
+            style={styles.testButtonText}
+          >
             Test Supabase RLS access
           </Text>
         </Pressable>
 
         {testError ? (
-          <View className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
-            <Text className="text-sm text-red-300">
+          <View
+            style={[
+              styles.resultCard,
+              styles.errorResult,
+            ]}
+          >
+            <Text
+              style={styles.resultText}
+            >
               {testError}
             </Text>
           </View>
         ) : null}
 
         {freePayload ? (
-          <View className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-            <Text className="font-black text-emerald-300">
+          <View
+            style={[
+              styles.resultCard,
+              styles.freeResult,
+            ]}
+          >
+            <Text
+              style={styles.freeResultTitle}
+            >
               FREE ROW VISIBLE
             </Text>
 
-            <Text className="mt-2 text-sm leading-6 text-zinc-300">
+            <Text
+              style={styles.resultText}
+            >
               {JSON.stringify(
                 freePayload.payload,
                 null,
@@ -259,14 +335,23 @@ export default function AccountScreen() {
           </View>
         ) : null}
 
-        <View className="mt-4 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-4">
-          <Text className="font-black text-violet-300">
+        <View
+          style={[
+            styles.resultCard,
+            styles.proResult,
+          ]}
+        >
+          <Text
+            style={styles.proResultTitle}
+          >
             {proPayload
               ? "PRO ROW VISIBLE"
               : "PRO ROW HIDDEN"}
           </Text>
 
-          <Text className="mt-2 text-sm leading-6 text-zinc-300">
+          <Text
+            style={styles.resultText}
+          >
             {proPayload
               ? JSON.stringify(
                   proPayload.payload,
@@ -280,13 +365,20 @@ export default function AccountScreen() {
         <Pressable
           onPress={async () => {
             await signOut();
+
             router.replace(
-              "/" as never
+              "/login" as never
             );
           }}
-          className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4"
+          style={({ pressed }) => [
+            styles.signOutButton,
+            pressed &&
+              styles.pressed,
+          ]}
         >
-          <Text className="text-center font-black text-red-300">
+          <Text
+            style={styles.signOutText}
+          >
             Sign out
           </Text>
         </Pressable>
@@ -294,3 +386,252 @@ export default function AccountScreen() {
     </SafeAreaView>
   );
 }
+
+const styles =
+  StyleSheet.create({
+    page: {
+      flex: 1,
+      backgroundColor: "#000000",
+    },
+
+    loadingPage: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#000000",
+    },
+
+    loadingText: {
+      marginTop: 14,
+      color: "#d4d4d8",
+      fontSize: 15,
+      fontWeight: "700",
+    },
+
+    scrollContent: {
+      width: "100%",
+      maxWidth: 760,
+      alignSelf: "center",
+      paddingHorizontal: 20,
+      paddingTop: 24,
+      paddingBottom: 80,
+    },
+
+    emptyCard: {
+      width: "90%",
+      maxWidth: 560,
+      alignSelf: "center",
+      marginTop: 90,
+      borderWidth: 1,
+      borderColor: "#27272a",
+      borderRadius: 28,
+      backgroundColor: "#09090b",
+      padding: 24,
+    },
+
+    backButton: {
+      alignSelf: "flex-start",
+      borderWidth: 1,
+      borderColor: "#27272a",
+      borderRadius: 16,
+      backgroundColor: "#09090b",
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+      marginBottom: 28,
+    },
+
+    backText: {
+      color: "#d4d4d8",
+      fontSize: 15,
+      fontWeight: "800",
+    },
+
+    eyebrow: {
+      color: "#34d399",
+      fontSize: 12,
+      fontWeight: "900",
+      letterSpacing: 4,
+    },
+
+    title: {
+      marginTop: 14,
+      color: "#ffffff",
+      fontSize: 36,
+      lineHeight: 42,
+      fontWeight: "900",
+    },
+
+    body: {
+      marginTop: 12,
+      color: "#a1a1aa",
+      fontSize: 16,
+      lineHeight: 25,
+    },
+
+    email: {
+      marginTop: 12,
+      marginBottom: 24,
+      color: "#a1a1aa",
+      fontSize: 16,
+    },
+
+    card: {
+      borderWidth: 1,
+      borderColor: "#27272a",
+      borderRadius: 24,
+      backgroundColor: "#09090b",
+      padding: 20,
+    },
+
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+
+    cardTitle: {
+      color: "#ffffff",
+      fontSize: 20,
+      fontWeight: "900",
+    },
+
+    planBadge: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+
+    freeBadge: {
+      borderColor: "#047857",
+      backgroundColor: "#022c22",
+    },
+
+    proBadge: {
+      borderColor: "#7c3aed",
+      backgroundColor: "#2e1065",
+    },
+
+    planBadgeText: {
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    freeText: {
+      color: "#6ee7b7",
+    },
+
+    proText: {
+      color: "#ddd6fe",
+    },
+
+    meta: {
+      marginTop: 14,
+      color: "#a1a1aa",
+      fontSize: 15,
+      lineHeight: 23,
+    },
+
+    primaryButton: {
+      minHeight: 54,
+      marginTop: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "#047857",
+      borderRadius: 16,
+      backgroundColor: "#052e2b",
+      paddingHorizontal: 18,
+      paddingVertical: 15,
+    },
+
+    primaryButtonText: {
+      color: "#6ee7b7",
+      fontSize: 16,
+      fontWeight: "900",
+    },
+
+    testButton: {
+      minHeight: 54,
+      marginTop: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "#0369a1",
+      borderRadius: 16,
+      backgroundColor: "#082f49",
+      paddingHorizontal: 18,
+      paddingVertical: 15,
+    },
+
+    testButtonText: {
+      color: "#7dd3fc",
+      fontSize: 16,
+      fontWeight: "900",
+    },
+
+    resultCard: {
+      marginTop: 16,
+      borderWidth: 1,
+      borderRadius: 18,
+      padding: 16,
+    },
+
+    freeResult: {
+      borderColor: "#047857",
+      backgroundColor: "#022c22",
+    },
+
+    proResult: {
+      borderColor: "#7c3aed",
+      backgroundColor: "#2e1065",
+    },
+
+    errorResult: {
+      borderColor: "#b91c1c",
+      backgroundColor: "#450a0a",
+    },
+
+    freeResultTitle: {
+      color: "#6ee7b7",
+      fontSize: 15,
+      fontWeight: "900",
+    },
+
+    proResultTitle: {
+      color: "#ddd6fe",
+      fontSize: 15,
+      fontWeight: "900",
+    },
+
+    resultText: {
+      marginTop: 10,
+      color: "#e4e4e7",
+      fontSize: 14,
+      lineHeight: 21,
+    },
+
+    signOutButton: {
+      minHeight: 54,
+      marginTop: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "#b91c1c",
+      borderRadius: 16,
+      backgroundColor: "#450a0a",
+      paddingHorizontal: 18,
+      paddingVertical: 15,
+    },
+
+    signOutText: {
+      color: "#fca5a5",
+      fontSize: 16,
+      fontWeight: "900",
+    },
+
+    pressed: {
+      opacity: 0.72,
+    },
+  });

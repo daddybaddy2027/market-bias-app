@@ -1,18 +1,20 @@
 import type {
-    Session,
-    User,
+  Session,
+  User,
 } from "@supabase/supabase-js";
 import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
 
 import { supabase } from "../lib/supabase";
 
-export type UserPlan = "free" | "pro";
+export type UserPlan =
+  | "free"
+  | "pro";
 
 export type SubscriptionStatus =
   | "none"
@@ -46,24 +48,24 @@ type AuthContextValue = {
 };
 
 const AuthContext =
-  createContext<AuthContextValue | undefined>(
-    undefined
+  createContext<AuthContextValue | null>(
+    null
   );
 
-function calculateIsPro(
+function profileHasProAccess(
   profile: UserProfile | null
 ) {
   if (!profile) {
     return false;
   }
 
-  const activeStatus =
-    profile.subscription_status === "active" ||
-    profile.subscription_status === "trialing";
+  if (profile.plan !== "pro") {
+    return false;
+  }
 
   if (
-    profile.plan !== "pro" ||
-    !activeStatus
+    profile.subscription_status !== "active" &&
+    profile.subscription_status !== "trialing"
   ) {
     return false;
   }
@@ -72,9 +74,10 @@ function calculateIsPro(
     return true;
   }
 
-  const expiresAt = new Date(
-    profile.subscription_expires_at
-  ).getTime();
+  const expiresAt =
+    new Date(
+      profile.subscription_expires_at
+    ).getTime();
 
   return (
     Number.isFinite(expiresAt) &&
@@ -90,10 +93,8 @@ export function AuthProvider({
   const [initializing, setInitializing] =
     useState(true);
 
-  const [
-    profileLoading,
-    setProfileLoading,
-  ] = useState(false);
+  const [profileLoading, setProfileLoading] =
+    useState(false);
 
   const [session, setSession] =
     useState<Session | null>(null);
@@ -109,9 +110,9 @@ export function AuthProvider({
       return;
     }
 
-    try {
-      setProfileLoading(true);
+    setProfileLoading(true);
 
+    try {
       const { data, error } =
         await supabase
           .from("profiles")
@@ -128,18 +129,19 @@ export function AuthProvider({
             ].join(",")
           )
           .eq("user_id", userId)
-          .single();
+          .maybeSingle();
 
       if (error) {
         throw error;
       }
 
       setProfile(
-        data as UserProfile
+        (data as UserProfile | null) ??
+          null
       );
     } catch (error) {
       console.error(
-        "Failed to load Supabase profile:",
+        "Failed to load profile:",
         error
       );
 
@@ -162,45 +164,66 @@ export function AuthProvider({
     if (error) {
       throw error;
     }
+
+    setProfile(null);
   }
 
   useEffect(() => {
-    let active = true;
+    let mounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (!active) {
-          return;
-        }
+    async function restoreSession() {
+      try {
+        const { data, error } =
+          await supabase.auth.getSession();
 
         if (error) {
-          console.error(
-            "Failed to restore session:",
-            error
-          );
+          throw error;
+        }
+
+        if (!mounted) {
+          return;
         }
 
         setSession(
           data.session ?? null
         );
+      } catch (error) {
+        console.error(
+          "Failed to restore session:",
+          error
+        );
 
-        setInitializing(false);
-      });
+        if (mounted) {
+          setSession(null);
+        }
+      } finally {
+        if (mounted) {
+          setInitializing(false);
+        }
+      }
+    }
+
+    restoreSession();
 
     const {
       data: { subscription },
     } =
       supabase.auth.onAuthStateChange(
         (_event, nextSession) => {
+          if (!mounted) {
+            return;
+          }
+
           setSession(
             nextSession ?? null
           );
+
+          setInitializing(false);
         }
       );
 
     return () => {
-      active = false;
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -211,28 +234,29 @@ export function AuthProvider({
     );
   }, [session?.user.id]);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      initializing,
-      profileLoading,
-      session,
-      user:
-        session?.user ?? null,
-      profile,
-      isAuthenticated:
-        Boolean(session?.user),
-      isPro:
-        calculateIsPro(profile),
-      refreshProfile,
-      signOut,
-    }),
-    [
-      initializing,
-      profileLoading,
-      session,
-      profile,
-    ]
-  );
+  const value =
+    useMemo<AuthContextValue>(
+      () => ({
+        initializing,
+        profileLoading,
+        session,
+        user:
+          session?.user ?? null,
+        profile,
+        isAuthenticated:
+          Boolean(session?.user),
+        isPro:
+          profileHasProAccess(profile),
+        refreshProfile,
+        signOut,
+      }),
+      [
+        initializing,
+        profileLoading,
+        session,
+        profile,
+      ]
+    );
 
   return (
     <AuthContext.Provider
@@ -244,14 +268,15 @@ export function AuthProvider({
 }
 
 export function useAuth() {
-  const context =
+  const value =
     useContext(AuthContext);
 
-  if (!context) {
+  if (!value) {
     throw new Error(
       "useAuth must be used inside AuthProvider"
     );
   }
 
-  return context;
+  return value;
 }
+

@@ -26,9 +26,10 @@ import {
 } from "../../services/api";
 
 import {
-  ENABLE_PRO_LOCKS,
-  getModelTier,
+  isModelLocked,
 } from "../../config/access";
+
+import { useAuth } from "../../providers/AuthProvider";
 
 
 type TabKey = "projection" | "history";
@@ -632,6 +633,8 @@ function HistoryTab({
 }
 
 export default function AssetDetailScreen() {
+  const { isPro } = useAuth();
+
   const params = useLocalSearchParams<{ symbol?: string }>();
   const rawSymbol = String(params.symbol ?? "").toUpperCase();
   const parsed = parseRouteSymbol(rawSymbol);
@@ -682,14 +685,12 @@ export default function AssetDetailScreen() {
             : "Direction only",
       });
 
-      const tier = getModelTier(
-        getAssetSymbol(asset),
-        horizonH
-      );
-
       if (
-        ENABLE_PRO_LOCKS &&
-        tier === "Pro"
+        isModelLocked(
+          getAssetSymbol(asset),
+          horizonH,
+          isPro
+        )
       ) {
         setCandles([]);
         setSummary(null);
@@ -740,7 +741,7 @@ export default function AssetDetailScreen() {
     load();
     const id = setInterval(() => load(), 60_000);
     return () => clearInterval(id);
-  }, [rawSymbol]);
+  }, [rawSymbol, isPro]);
 
   const classes = useMemo(
     () => getBiasClasses(detail?.item.bias ?? "Neutral"),
@@ -780,14 +781,12 @@ export default function AssetDetailScreen() {
 
   const asset = detail.item;
 
-  const directTier = getModelTier(
-    detail.symbol,
-    detail.horizonH
-  );
-
   const directlyLocked =
-    ENABLE_PRO_LOCKS &&
-    directTier === "Pro";
+    isModelLocked(
+      detail.symbol,
+      detail.horizonH,
+      isPro
+    );
 
   if (directlyLocked) {
     return (

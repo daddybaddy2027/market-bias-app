@@ -23,14 +23,14 @@ import {
   getAssetSymbol,
 } from "../services/api";
 
+import { useAuth } from "../providers/AuthProvider";
+
 import {
   ENABLE_PRO_LOCKS,
-  FREE_MODEL_KEYS,
-  PRO_MODEL_KEYS,
   getModelTier,
   isFreeDriver,
   isModelLocked,
-  isModelPubliclyAllowed,
+  isModelPubliclyAllowed
 } from "../config/access";
 
 type AccessTier = "Free" | "Pro";
@@ -144,7 +144,8 @@ function getConfidence(item: ApiAsset) {
 
 function normalizeAsset(
   item: ApiAsset,
-  summaryMap: Map<string, PerformanceSummaryRow>
+  summaryMap: Map<string, PerformanceSummaryRow>,
+  userIsPro: boolean
 ): CardAsset {
   const symbol = getAssetSymbol(item);
   const horizonH = item.horizon_h ?? 12;
@@ -177,7 +178,8 @@ function normalizeAsset(
     tier,
     locked: isModelLocked(
       symbol,
-      horizonH
+      horizonH,
+      userIsPro
     ),
     liveAccuracy:
       typeof summary?.direction_accuracy ===
@@ -495,8 +497,10 @@ function AssetCard({
 
 function DriverCard({
   item,
+  isPro,
 }: {
   item: MarketDriver;
+  isPro: boolean;
 }) {
   const free = isFreeDriver(
     item.key,
@@ -505,7 +509,8 @@ function DriverCard({
 
   if (
     ENABLE_PRO_LOCKS &&
-    !free
+    !free &&
+    !isPro
   ) {
     return (
       <Pressable
@@ -711,6 +716,11 @@ function PricingPreview() {
 }
 
 export default function HomeScreen() {
+  const {
+    isAuthenticated,
+    isPro,
+  } = useAuth();
+
   const [data, setData] =
     useState<MarketState | null>(
       null
@@ -828,7 +838,8 @@ export default function HomeScreen() {
         .map((item) =>
           normalizeAsset(
             item,
-            performanceMap
+            performanceMap,
+            isPro
           )
         )
         .sort((a, b) => {
@@ -845,6 +856,7 @@ export default function HomeScreen() {
     }, [
       data?.assets,
       performanceMap,
+      isPro,
     ]);
 
   const modelCounts = useMemo(
@@ -961,6 +973,38 @@ export default function HomeScreen() {
                 {modelCounts.pro} Pro
               </Text>
             </View>
+          </View>
+
+          <View className="mt-5 flex-row flex-wrap gap-3">
+            <Pressable
+              onPress={() =>
+                router.push(
+                  (isAuthenticated
+                    ? "/account"
+                    : "/login") as never
+                )
+              }
+              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 active:opacity-70"
+            >
+              <Text className="font-black text-emerald-300">
+                {isAuthenticated
+                  ? isPro
+                    ? "Pro account"
+                    : "Free account"
+                  : "Sign in / Create account"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                router.push("/pricing" as never)
+              }
+              className="rounded-2xl border border-violet-500/40 bg-violet-500/10 px-5 py-3 active:opacity-70"
+            >
+              <Text className="font-black text-violet-300">
+                View plans
+              </Text>
+            </Pressable>
           </View>
 
           <Text className="mt-4 text-xs text-zinc-500">
@@ -1088,6 +1132,7 @@ export default function HomeScreen() {
             <DriverCard
               key={item.key}
               item={item}
+              isPro={isPro}
             />
           )
         )}
