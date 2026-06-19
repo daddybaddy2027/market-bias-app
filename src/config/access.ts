@@ -5,6 +5,8 @@ export type AccessTier =
 export const ENABLE_PRO_LOCKS =
   true;
 
+export const PUBLIC_PREVIEW_MODE = true;
+
 export const FREE_MODEL_KEYS =
   new Set([
     "GBPJPY-12",
@@ -74,6 +76,10 @@ export function isModelLocked(
   horizonH: number,
   userIsPro = false
 ) {
+  if (PUBLIC_PREVIEW_MODE) {
+    return false;
+  }
+
   return (
     ENABLE_PRO_LOCKS &&
     getModelTier(
