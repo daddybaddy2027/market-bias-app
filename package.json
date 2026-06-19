@@ -16,6 +16,7 @@
     "@react-navigation/elements": "^2.9.10",
     "@react-navigation/native": "^7.1.33",
     "@supabase/supabase-js": "^2.108.2",
+    "@vercel/analytics": "^2.0.1",
     "expo": "~55.0.24",
     "expo-constants": "~55.0.16",
     "expo-device": "~55.0.17",
