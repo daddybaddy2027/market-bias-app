@@ -26,7 +26,13 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 
 import {
+  SupportProjectButton,
+} from "../components/SupportProjectButton";
+
+import {
   ENABLE_PRO_LOCKS,
+  PUBLIC_PREVIEW_MODE,
+  PUBLIC_PREVIEW_PERFORMANCE,
   getModelTier,
   isFreeDriver,
   isModelLocked,
@@ -555,6 +561,7 @@ function DriverCard({
 
   if (
     ENABLE_PRO_LOCKS &&
+    !PUBLIC_PREVIEW_MODE &&
     !free &&
     !isPro
   ) {
@@ -1179,10 +1186,37 @@ export default function HomeScreen() {
           </View>
         </Card>
 
+
+        {PUBLIC_PREVIEW_MODE ? (
+          <Card className="mb-6 border-cyan-500/30 bg-cyan-500/10">
+            <Text className="text-xs font-black uppercase tracking-[3px] text-cyan-300">
+              Public beta preview
+            </Text>
+
+            <Text className="mt-3 text-xl font-black text-white">
+              Full model views and verified performance are temporarily unlocked
+            </Text>
+
+            <Text className="mt-3 text-sm leading-6 text-zinc-300">
+              During the public beta, visitors can explore all currently
+              validated public model outputs, live accuracy and prediction
+              history. Access rules will return to Free and Pro tiers when the
+              official subscription system launches.
+            </Text>
+
+            {PUBLIC_PREVIEW_PERFORMANCE ? (
+              <Text className="mt-3 text-xs leading-5 text-cyan-200">
+                Accuracy values are calculated from completed live predictions
+                and update as additional forecasts are evaluated.
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+
         <SectionTitle
           kicker="Predictions"
           title="Live model assets"
-          subtitle="Selected models remain free. Pro models show their existence while the current bias, projected zone, confidence and full history remain locked."
+          subtitle={PUBLIC_PREVIEW_MODE ? "All currently validated public models are temporarily unlocked during the public beta." : "Selected models remain free. Pro models show their existence while the current bias, projected zone, confidence and full history remain locked."}
         />
 
         {visibleAssets.length ? (
@@ -1205,7 +1239,7 @@ export default function HomeScreen() {
         <SectionTitle
           kicker="Cross-asset"
           title="Market drivers"
-          subtitle="Equities, volatility, USD and JPY-haven state remain free. Rates, metals and full risk-appetite decomposition are part of Pro."
+          subtitle={PUBLIC_PREVIEW_MODE ? "The full cross-asset driver view is temporarily unlocked during the public beta." : "Equities, volatility, USD and JPY-haven state remain free. Rates, metals and full risk-appetite decomposition are part of Pro."}
         />
 
         {data.drivers.map(
@@ -1236,6 +1270,8 @@ export default function HomeScreen() {
 
         <PricingPreview />
 
+        <SupportProjectButton />
+
         <Card className="mt-4">
           <Text className="text-xs uppercase tracking-wider text-zinc-500">
             Disclaimer
@@ -1250,4 +1286,3 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-

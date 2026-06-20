@@ -12,8 +12,14 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 
 import {
+  SupportProjectButton,
+} from "../components/SupportProjectButton";
+
+import {
   FREE_MODEL_KEYS,
   PRO_MODEL_KEYS,
+  PUBLIC_PREVIEW_MODE,
+  PUBLIC_PREVIEW_PERFORMANCE,
 } from "../config/access";
 
 function Card({
@@ -108,6 +114,31 @@ export default function PricingScreen() {
           </Text>
         </View>
 
+        {PUBLIC_PREVIEW_MODE ? (
+          <Card className="mb-5 border-cyan-500/30 bg-cyan-500/10">
+            <Text className="text-xs font-black uppercase tracking-[3px] text-cyan-300">
+              Public beta preview
+            </Text>
+
+            <Text className="mt-3 text-xl font-black text-white">
+              Pro model views are temporarily available without payment
+            </Text>
+
+            <Text className="mt-3 text-sm leading-6 text-zinc-300">
+              While the official subscription system is being finalized,
+              visitors can inspect the complete current model set and the
+              broader cross-asset environment.
+            </Text>
+
+            {PUBLIC_PREVIEW_PERFORMANCE ? (
+              <Text className="mt-3 text-sm leading-6 text-cyan-200">
+                Verified accuracy and prediction history are also unlocked
+                during the beta so results can be judged transparently.
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+
         <Card className="mb-5">
           <View className="flex-row items-start justify-between">
             <View>
@@ -151,16 +182,19 @@ export default function PricingScreen() {
             Selected prediction details and chart
           </FeatureRow>
 
-          <FeatureRow included={false}>
+          <FeatureRow included={PUBLIC_PREVIEW_MODE}>
             Complete model set
+            {PUBLIC_PREVIEW_MODE
+              ? " · temporarily unlocked in public beta"
+              : ""}
           </FeatureRow>
 
-          <FeatureRow included={false}>
+          <FeatureRow included={PUBLIC_PREVIEW_MODE}>
             Full rates, metals and risk-appetite interpretation
           </FeatureRow>
 
-          <FeatureRow included={false}>
-            Complete verified prediction history
+          <FeatureRow included={PUBLIC_PREVIEW_PERFORMANCE}>
+            Complete verified prediction history and live accuracy
           </FeatureRow>
         </Card>
 
@@ -255,7 +289,9 @@ export default function PricingScreen() {
           </Pressable>
         </Card>
 
-        <Card>
+        <SupportProjectButton />
+
+        <Card className="mt-5">
           <Text className="text-xl font-black text-white">
             Why a subscription?
           </Text>

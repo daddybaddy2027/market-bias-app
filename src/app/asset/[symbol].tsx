@@ -26,10 +26,16 @@ import {
 } from "../../services/api";
 
 import {
+  PUBLIC_PREVIEW_PERFORMANCE,
+  canViewModelPerformance,
   isModelLocked,
 } from "../../config/access";
 
 import { useAuth } from "../../providers/AuthProvider";
+
+import {
+  SupportProjectButton,
+} from "../../components/SupportProjectButton";
 
 
 type TabKey = "projection" | "history";
@@ -758,11 +764,34 @@ export default function AssetDetailScreen() {
             : "Direction only",
       });
 
+      const performanceAllowed =
+        canViewModelPerformance(
+          getAssetSymbol(asset),
+          horizonH,
+          isPro
+        );
+
       const [candlesResult, summaryResult, historyResult] =
         await Promise.allSettled([
-          fetchCandles(getAssetSymbol(asset), 96),
-          fetchPerformanceSummary(getAssetSymbol(asset), horizonH),
-          fetchPerformanceHistory(getAssetSymbol(asset), horizonH, 120),
+          fetchCandles(
+            getAssetSymbol(asset),
+            96
+          ),
+
+          performanceAllowed
+            ? fetchPerformanceSummary(
+                getAssetSymbol(asset),
+                horizonH
+              )
+            : Promise.resolve([]),
+
+          performanceAllowed
+            ? fetchPerformanceHistory(
+                getAssetSymbol(asset),
+                horizonH,
+                120
+              )
+            : Promise.resolve([]),
         ]);
 
       const errors: string[] = [];
@@ -843,6 +872,13 @@ export default function AssetDetailScreen() {
 
   const directlyLocked =
     isModelLocked(
+      detail.symbol,
+      detail.horizonH,
+      isPro
+    );
+
+  const canSeePerformance =
+    canViewModelPerformance(
       detail.symbol,
       detail.horizonH,
       isPro
@@ -972,17 +1008,33 @@ export default function AssetDetailScreen() {
           </View>
         ) : null}
 
+        {PUBLIC_PREVIEW_PERFORMANCE ? (
+          <View className="mb-5 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+            <Text className="text-xs font-black uppercase tracking-[2px] text-cyan-300">
+              Public beta · Verified performance unlocked
+            </Text>
+
+            <Text className="mt-2 text-sm leading-6 text-zinc-300">
+              Live accuracy and completed prediction history are temporarily
+              available during the public beta. Results update as additional
+              forecasts reach their evaluation horizon.
+            </Text>
+          </View>
+        ) : null}
+
         <View className="mb-5 flex-row gap-2">
           <TabButton
             label="Projection"
             active={tab === "projection"}
             onPress={() => setTab("projection")}
           />
-          <TabButton
-            label="History"
-            active={tab === "history"}
-            onPress={() => setTab("history")}
-          />
+          {canSeePerformance ? (
+            <TabButton
+              label="History"
+              active={tab === "history"}
+              onPress={() => setTab("history")}
+            />
+          ) : null}
         </View>
 
         {tab === "projection" ? (
@@ -1046,13 +1098,27 @@ export default function AssetDetailScreen() {
               </View>
             </Card>
 
-            <AccuracyCard summary={summary} />
+            {canSeePerformance ? (
+              <AccuracyCard summary={summary} />
+            ) : null}
           </View>
-        ) : (
+        ) : canSeePerformance ? (
           <HistoryTab rows={history} symbol={detail.symbol} />
+        ) : (
+          <Card>
+            <Text className="text-xl font-black text-white">
+              Performance history is locked
+            </Text>
+
+            <Text className="mt-2 text-sm leading-6 text-zinc-400">
+              Verified prediction history is available to active Pro accounts.
+            </Text>
+          </Card>
         )}
 
-        <Card className="mt-2">
+        <SupportProjectButton compact />
+
+        <Card className="mt-5">
           <Text className="text-xs uppercase tracking-wider text-zinc-500">Disclaimer</Text>
           <Text className="mt-2 text-sm leading-6 text-zinc-400">
             Research and educational market-intelligence output. Not financial

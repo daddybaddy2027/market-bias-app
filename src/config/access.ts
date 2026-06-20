@@ -2,10 +2,18 @@ export type AccessTier =
   | "Free"
   | "Pro";
 
+/*
+  Keep the permanent lock system enabled, but temporarily bypass it
+  while the public beta is active.
+*/
 export const ENABLE_PRO_LOCKS =
   true;
 
-export const PUBLIC_PREVIEW_MODE = true;
+export const PUBLIC_PREVIEW_MODE =
+  true;
+
+export const PUBLIC_PREVIEW_PERFORMANCE =
+  true;
 
 export const FREE_MODEL_KEYS =
   new Set([
@@ -90,10 +98,32 @@ export function isModelLocked(
   );
 }
 
+export function canViewModelPerformance(
+  symbol: string,
+  horizonH: number,
+  userIsPro = false
+) {
+  if (PUBLIC_PREVIEW_PERFORMANCE) {
+    return true;
+  }
+
+  return (
+    userIsPro ||
+    getModelTier(
+      symbol,
+      horizonH
+    ) === "Free"
+  );
+}
+
 export function isFreeDriver(
   key?: string,
   title?: string
 ) {
+  if (PUBLIC_PREVIEW_MODE) {
+    return true;
+  }
+
   const text =
     `${key ?? ""} ${title ?? ""}`
       .toLowerCase()
