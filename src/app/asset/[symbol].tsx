@@ -37,6 +37,10 @@ import {
   SupportProjectButton,
 } from "../../components/SupportProjectButton";
 
+import {
+  PairContextCard,
+} from "../../components/PairContextCard";
+
 
 type TabKey = "projection" | "history";
 
@@ -1097,6 +1101,8 @@ export default function AssetDetailScreen() {
                 ))}
               </View>
             </Card>
+
+            <PairContextCard asset={asset} marketState={marketState} />
 
             {canSeePerformance ? (
               <AccuracyCard summary={summary} />

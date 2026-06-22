@@ -30,6 +30,10 @@ import {
 } from "../components/SupportProjectButton";
 
 import {
+  RegimeNarrativeCard,
+} from "../components/RegimeNarrativeCard";
+
+import {
   ENABLE_PRO_LOCKS,
   PUBLIC_PREVIEW_MODE,
   PUBLIC_PREVIEW_PERFORMANCE,
@@ -1173,19 +1177,19 @@ export default function HomeScreen() {
             />
           </View>
 
-          <View className="mt-4 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-4">
-            <Text className="text-sm font-black text-violet-300">
-              Detailed regime interpretation is Pro
+          <View className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+            <Text className="text-sm font-black text-emerald-300">
+              Regime explanation is now part of the public beta
             </Text>
 
             <Text className="mt-2 text-sm leading-6 text-zinc-400">
-              Free users see the current regime and risk
-              score. Pro adds the complete cross-asset
-              explanation and premium driver breakdown.
+              The app separates what is observed from possible macro
+              explanations, likely beneficiaries and likely headwinds.
             </Text>
           </View>
         </Card>
 
+        <RegimeNarrativeCard data={data} />
 
         {PUBLIC_PREVIEW_MODE ? (
           <Card className="mb-6 border-cyan-500/30 bg-cyan-500/10">

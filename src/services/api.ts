@@ -15,6 +15,31 @@ export type MarketDriver = {
   detail: string;
 };
 
+export type RegimeDriverScore = {
+  key: string;
+  label: string;
+  score: number;
+};
+
+export type RegimeNarrative = {
+  regimeCode?: string;
+  headline?: string;
+  confidence?: number;
+  disagreement?: number;
+  observed?: string;
+  possibleDrivers?: string[];
+  likelyBeneficiaries?: string[];
+  likelyHeadwinds?: string[];
+  howToUse?: string;
+  dominantDrivers?: RegimeDriverScore[];
+  currencyLeaders?: string[];
+  currencyLaggards?: string[];
+  driverScores?: Record<string, number>;
+  methodNote?: string;
+  blindSpots?: string[];
+};
+
+
 export type CurrencyStrengthItem = {
   code: string;
   name: string;
@@ -73,6 +98,13 @@ export type ApiAsset = {
 
   drivers?: string[];
   explanation?: string;
+
+  macroContextShort?: string;
+  macroContextLong?: string;
+  contextBullets?: string[];
+  regimeAlignment?: "Aligned" | "Mixed" | "Conflicted" | string;
+  regimeConflictLevel?: "Low" | "Medium" | "High" | string;
+  pairStrengthSpread?: number | null;
 };
 
 export type MarketState = {
@@ -92,6 +124,7 @@ export type MarketState = {
   confidenceLabel?: string;
   regimeExplanation?: string;
   riskScore?: number;
+  regimeNarrative?: RegimeNarrative;
 
   drivers: MarketDriver[];
   currencyStrength: CurrencyStrengthItem[];
