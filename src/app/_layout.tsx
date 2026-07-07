@@ -20,6 +20,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="macro" />
           <Stack.Screen name="login" />
           <Stack.Screen name="account" />
           <Stack.Screen name="pricing" />
@@ -33,4 +34,5 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
+
 

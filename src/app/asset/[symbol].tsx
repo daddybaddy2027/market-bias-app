@@ -62,6 +62,9 @@ const ASSET_DISPLAY_NAMES: Record<string, string> = {
   EURJPY: "Euro / Japanese Yen",
   GBPJPY: "British Pound / Japanese Yen",
   GBPAUD: "British Pound / Australian Dollar",
+  AUDUSD: "Australian Dollar / US Dollar",
+  GBPUSD: "British Pound / US Dollar",
+  USDJPY: "US Dollar / Japanese Yen",
 };
 
 function makeLockedAsset(

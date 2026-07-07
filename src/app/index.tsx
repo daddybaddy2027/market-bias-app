@@ -1089,6 +1089,17 @@ export default function HomeScreen() {
 
             <Pressable
               onPress={() =>
+                router.push("/macro" as never)
+              }
+              className="rounded-2xl border border-sky-500/40 bg-sky-500/10 px-5 py-3 active:opacity-70"
+            >
+              <Text className="font-black text-sky-300">
+                Macro intelligence
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
                 router.push("/pricing" as never)
               }
               className="rounded-2xl border border-violet-500/40 bg-violet-500/10 px-5 py-3 active:opacity-70"
