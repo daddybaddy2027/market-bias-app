@@ -59,35 +59,93 @@ type CardAsset = {
   explanation: string;
   drivers: string[];
   modelFamily: string;
+  modelId?: string;
+  modelGroup?: string;
+  modelLabel?: string;
+  modelSource?: string;
+  sortKey: string;
   tier: AccessTier;
   locked: boolean;
   liveAccuracy: number | null;
   accuracyN: number;
+  accuracySource: "live" | "validation" | "collecting";
+  validationNote?: string;
+  probUp?: number | null;
+  probDown?: number | null;
+  probUsed?: number | null;
+  probSourceUsed?: string;
+  thresholdUsed?: number | null;
+  thresholdConfidence?: number | null;
+  publicStatus?: string;
+  validationTotalPips?: number | null;
+  validationAvgWeekPips?: number | null;
+  validationProfitableWeeks?: number | null;
+  validationActiveWeeks?: number | null;
+  validationProfitFactor?: number | null;
+  validationMaxDrawdownPips?: number | null;
+  validationWinRate?: number | null;
 };
 
-const PRO_MODEL_PREVIEWS = [
+type ModelPreview = {
+  symbol: string;
+  horizonH: number;
+  display: string;
+  modelFamily: string;
+};
+
+// Public beta: all validated models should come from the live Supabase payload.
+// Locked preview cards are disabled so old EURJPY / GBPAUD ghost cards do not appear.
+const PRO_MODEL_PREVIEWS: ModelPreview[] = [];
+
+const MODEL_VALIDATION_STATS: Record<
+  string,
   {
-    symbol: "EURJPY",
-    horizonH: 12,
-    display: "Euro / Japanese Yen",
-    modelFamily: "legacy_jpy_12h",
+    accuracy: number;
+    n: number;
+    label: string;
+    note: string;
+  }
+> = {
+  "AUDUSD-12": {
+    accuracy: 0.783333,
+    n: 60,
+    label: "Validation accuracy",
+    note: "No-leak validation sample. High-confidence AUDUSD 12h signals.",
   },
-  {
-    symbol: "EURUSD",
-    horizonH: 3,
-    display: "Euro / US Dollar",
-    modelFamily: "prod_v1",
+  "EURUSD-6": {
+    accuracy: 1.0,
+    n: 5,
+    label: "Validation accuracy",
+    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
   },
-  {
-    symbol: "GBPAUD",
-    horizonH: 3,
-    display: "British Pound / Australian Dollar",
-    modelFamily: "prod_v1",
+  "EURUSD-12": {
+    accuracy: 0.814815,
+    n: 27,
+    label: "Validation accuracy",
+    note: "No-leak validation sample. Bearish-regime signal profile, one-sided regime warning.",
   },
-] as const;
+  "GBPUSD-12": {
+    accuracy: 1.0,
+    n: 5,
+    label: "Validation accuracy",
+    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+  },
+  "USDJPY-6": {
+    accuracy: 0.613208,
+    n: 106,
+    label: "Validation accuracy",
+    note: "No-leak validation sample. Frequent USDJPY 6h signal profile.",
+  },
+  "USDJPY-12": {
+    accuracy: 0.675676,
+    n: 37,
+    label: "Validation accuracy",
+    note: "No-leak validation sample. USDJPY 12h medium-frequency signal profile.",
+  },
+};
 
 function makeLockedPreview(
-  item: (typeof PRO_MODEL_PREVIEWS)[number]
+  item: ModelPreview
 ): CardAsset {
   return {
     key: `${item.symbol}-${item.horizonH}`,
@@ -104,10 +162,24 @@ function makeLockedPreview(
       "This model is available to active Pro accounts. Free users can see that the model exists, but its current output and verified history remain protected by database access rules.",
     drivers: [],
     modelFamily: item.modelFamily,
+    modelId: undefined,
+    modelGroup: undefined,
+    modelLabel: undefined,
+    modelSource: undefined,
+    sortKey: `${item.symbol}-${item.horizonH}`,
     tier: "Pro",
     locked: true,
     liveAccuracy: null,
     accuracyN: 0,
+    accuracySource: "collecting",
+    validationNote: undefined,
+    probUp: null,
+    probDown: null,
+    probUsed: null,
+    probSourceUsed: undefined,
+    thresholdUsed: null,
+    thresholdConfidence: null,
+    publicStatus: undefined,
   };
 }
 
@@ -123,6 +195,45 @@ function pct(
   }
 
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+
+function signedPips(
+  value?: number | null,
+  digits = 1
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return "N/A";
+  }
+
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)} pips`;
+}
+
+function compactNumber(
+  value?: number | null,
+  digits = 2
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return "N/A";
+  }
+
+  return value.toFixed(digits);
+}
+
+function modelSlug(
+  value?: string | null
+) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, "_");
 }
 
 function getBiasClasses(bias: Bias) {
@@ -205,13 +316,81 @@ function normalizeAsset(
 ): CardAsset {
   const symbol = getAssetSymbol(item);
   const horizonH = item.horizon_h ?? 12;
-  const key = `${symbol}-${horizonH}`;
-  const summary = summaryMap.get(key);
+  const baseKey = `${symbol}-${horizonH}`;
+  const modelFamily =
+    item.model_family ??
+    item.source ??
+    "model";
+  const modelId = item.model_id;
+  const modelKeyPart = modelSlug(
+    modelId ?? modelFamily
+  );
+  const key = `${baseKey}-${modelKeyPart}`;
+  const routeSymbol = modelId
+    ? `${symbol}-${horizonH}h-${modelSlug(modelId)}`
+    : `${symbol}-${horizonH}h`;
+  const summary = summaryMap.get(baseKey);
   const tier = getModelTier(symbol, horizonH);
+  const validation = MODEL_VALIDATION_STATS[baseKey];
+
+  const isFinalAppV2 =
+    modelFamily === "clean_pro_final_app_v2" ||
+    item.source === "final_app_v2";
+
+  const isMlp =
+    item.model_group === "mlp_live_v1" ||
+    item.source === "mlp_live_v1" ||
+    modelFamily.includes("mlp_live_v1") ||
+    typeof item.validation_direction_accuracy === "number";
+
+  const useMlpValidation =
+    isMlp &&
+    typeof item.validation_direction_accuracy === "number";
+
+  // Important:
+  // live performance summary is still grouped by asset-horizon.
+  // For final_app_v2 and MLP variants, prefer model-owned validation stats
+  // so multiple models for AUDUSD-12 / EURUSD-12 do not contaminate each other.
+  const useValidationAccuracy =
+    useMlpValidation ||
+    (isFinalAppV2 && !!validation);
+
+  const hasLiveAccuracy =
+    !useValidationAccuracy &&
+    typeof summary?.direction_accuracy ===
+      "number";
+
+  const liveAccuracy =
+    useMlpValidation
+      ? item.validation_direction_accuracy ?? null
+      : useValidationAccuracy
+      ? validation?.accuracy ?? null
+      : hasLiveAccuracy
+      ? summary?.direction_accuracy ?? null
+      : validation?.accuracy ?? null;
+
+  const accuracyN =
+    useMlpValidation
+      ? item.validation_trades ?? 0
+      : useValidationAccuracy
+      ? validation?.n ?? 0
+      : hasLiveAccuracy
+      ? summary?.direction_predictions ?? 0
+      : validation?.n ?? 0;
+
+  const accuracySource =
+    useValidationAccuracy
+      ? "validation"
+      : hasLiveAccuracy
+      ? "live"
+      : validation
+      ? "validation"
+      : "collecting";
 
   return {
     key,
-    routeSymbol: `${symbol}-${horizonH}h`,
+    routeSymbol,
+    sortKey: baseKey,
     symbol: `${symbol} ${horizonH}h`,
     display: item.display ?? symbol,
     horizonH,
@@ -222,28 +401,49 @@ function normalizeAsset(
     status:
       item.status ??
       item.signal_strength ??
-      "Model read",
+      (
+        item.visible === false
+          ? "Monitoring only. Current probability is below the active-signal threshold."
+          : "Model read"
+      ),
     explanation:
       item.explanation?.trim() ||
       `${symbol} ${horizonH}h probabilistic live model output. Models and cross-asset state currently refresh every closed market hour.`,
     drivers: item.drivers ?? [],
-    modelFamily:
-      item.model_family ??
-      item.source ??
-      "model",
+    modelFamily,
+    modelId,
+    modelGroup: item.model_group,
+    modelLabel: item.model_label,
+    modelSource: item.model_source,
     tier,
     locked: isModelLocked(
       symbol,
       horizonH,
       userIsPro
     ),
-    liveAccuracy:
-      typeof summary?.direction_accuracy ===
-      "number"
-        ? summary.direction_accuracy
-        : null,
-    accuracyN:
-      summary?.direction_predictions ?? 0,
+    liveAccuracy,
+    accuracyN,
+    accuracySource,
+    validationNote:
+      item.validation_note ??
+      validation?.note,
+    probUp: item.prob_up ?? null,
+    probDown: item.prob_down ?? null,
+    probUsed: item.prob_used ?? null,
+    probSourceUsed:
+      item.model_source ??
+      item.prob_source_used,
+    thresholdUsed: item.threshold_used ?? null,
+    thresholdConfidence:
+      item.threshold_confidence ?? null,
+    publicStatus: item.public_status,
+    validationTotalPips: item.validation_total_pips ?? null,
+    validationAvgWeekPips: item.validation_avg_week_pips ?? null,
+    validationProfitableWeeks: item.validation_profitable_weeks ?? null,
+    validationActiveWeeks: item.validation_active_weeks ?? null,
+    validationProfitFactor: item.validation_profit_factor ?? null,
+    validationMaxDrawdownPips: item.validation_max_drawdown_pips ?? null,
+    validationWinRate: item.validation_win_rate ?? null,
   };
 }
 
@@ -392,6 +592,23 @@ function AssetCard({
     );
   }
 
+  const accuracyLabel =
+    item.accuracySource === "live"
+      ? "Live direction accuracy"
+      : item.accuracySource === "validation"
+      ? "Validation direction accuracy"
+      : "Direction accuracy";
+
+  const accuracyValue =
+    item.liveAccuracy === null
+      ? "Collecting"
+      : `${pct(item.liveAccuracy, 1)} · n=${item.accuracyN}`;
+
+  const isMlpModel =
+    item.modelGroup === "mlp_live_v1" ||
+    item.modelFamily.includes("mlp_live_v1") ||
+    typeof item.validationTotalPips === "number";
+
   return (
     <Pressable
       onPress={openCard}
@@ -472,16 +689,12 @@ function AssetCard({
 
       <View className="mt-2 flex-row gap-2">
         <SmallMetric
-          label="Live accuracy"
-          value={
-            item.locked
-              ? "Pro history"
-              : item.liveAccuracy === null
-              ? "Collecting"
-              : `${pct(
-                  item.liveAccuracy,
-                  1
-                )} · n=${item.accuracyN}`
+          label={accuracyLabel}
+          value={accuracyValue}
+          valueClassName={
+            item.accuracySource === "validation"
+              ? "text-cyan-300"
+              : "text-emerald-300"
           }
         />
 
@@ -494,6 +707,79 @@ function AssetCard({
           }
         />
       </View>
+
+      <View className="mt-2 flex-row gap-2">
+        <SmallMetric
+          label="Latest model output"
+          value={
+            typeof item.probUp === "number"
+              ? `${pct(item.probUp, 1)} up`
+              : "N/A"
+          }
+        />
+
+        <SmallMetric
+          label="Model source"
+          value={
+            item.probSourceUsed ??
+            item.publicStatus ??
+            "N/A"
+          }
+        />
+      </View>
+
+      {isMlpModel ? (
+        <>
+          <View className="mt-2 flex-row gap-2">
+            <SmallMetric
+              label="Validated pips"
+              value={signedPips(item.validationTotalPips)}
+              valueClassName={
+                typeof item.validationTotalPips === "number" &&
+                item.validationTotalPips >= 0
+                  ? "text-emerald-300"
+                  : "text-red-300"
+              }
+            />
+
+            <SmallMetric
+              label="Avg weekly pips"
+              value={signedPips(item.validationAvgWeekPips)}
+            />
+          </View>
+
+          <View className="mt-2 flex-row gap-2">
+            <SmallMetric
+              label="Profitable weeks"
+              value={
+                typeof item.validationProfitableWeeks === "number" &&
+                typeof item.validationActiveWeeks === "number"
+                  ? `${item.validationProfitableWeeks}/${item.validationActiveWeeks}`
+                  : "N/A"
+              }
+              valueClassName="text-cyan-300"
+            />
+
+            <SmallMetric
+              label="Profit factor"
+              value={compactNumber(item.validationProfitFactor)}
+            />
+          </View>
+
+          <View className="mt-2 flex-row gap-2">
+            <SmallMetric
+              label="Max drawdown"
+              value={signedPips(item.validationMaxDrawdownPips)}
+              valueClassName="text-red-300"
+            />
+
+            <SmallMetric
+              label="Validation win rate"
+              value={pct(item.validationWinRate, 1)}
+            />
+          </View>
+        </>
+      ) : null}
 
       {!item.locked ? (
         <>
@@ -510,6 +796,19 @@ function AssetCard({
               {item.status}
             </Text>
           </View>
+
+          {item.accuracySource === "validation" &&
+          item.validationNote ? (
+            <View className="mt-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-3">
+              <Text className="text-xs uppercase tracking-wider text-cyan-300">
+                Validation note
+              </Text>
+
+              <Text className="mt-1 text-sm leading-6 text-zinc-300">
+                {item.validationNote}
+              </Text>
+            </View>
+          ) : null}
 
           <Text className="mt-4 text-sm leading-6 text-zinc-400">
             {item.explanation}
@@ -711,7 +1010,7 @@ function PricingPreview() {
               </Text>
 
               <Text className="mt-1 text-sm text-zinc-500">
-                2 live models
+                Public beta models
               </Text>
             </View>
 
@@ -723,7 +1022,7 @@ function PricingPreview() {
           <Text className="mt-4 text-sm leading-6 text-zinc-400">
             Currency strength, active regime,
             equities, volatility, USD, JPY haven,
-            GBPJPY 12h and EURUSD 6h.
+            GBPJPY 12h, EURUSD 3h and selected final_app_v2 models.
           </Text>
         </Card>
 
@@ -881,10 +1180,8 @@ export default function HomeScreen() {
     useMemo(() => {
       const liveAssets =
         (data?.assets ?? [])
-          .filter(
-            (item) =>
-              item.visible !== false
-          )
+          // Do not filter by item.visible.
+          // visible=false means monitoring / below threshold, not hidden.
           .filter((item) => {
             const symbol =
               getAssetSymbol(item);
@@ -905,39 +1202,24 @@ export default function HomeScreen() {
             )
           );
 
-      if (!isPro) {
-        const existingKeys =
-          new Set(
-            liveAssets.map(
-              (item) => item.key
-            )
-          );
-
-        for (
-          const preview of
-            PRO_MODEL_PREVIEWS
-        ) {
-          const key =
-            `${preview.symbol}-${preview.horizonH}`;
-
-          if (
-            !existingKeys.has(key)
-          ) {
-            liveAssets.push(
-              makeLockedPreview(
-                preview
-              )
-            );
-          }
-        }
-      }
-
       return liveAssets.sort(
         (a, b) => {
-          if (a.tier !== b.tier) {
-            return a.tier === "Free"
-              ? -1
-              : 1;
+          const order: Record<string, number> = {
+            "EURUSD-3": 10,
+            "EURUSD-6": 20,
+            "USDJPY-6": 30,
+            "AUDUSD-12": 40,
+            "EURUSD-12": 50,
+            "GBPUSD-12": 60,
+            "USDJPY-12": 70,
+            "GBPJPY-12": 80,
+          };
+
+          const ao = order[a.sortKey] ?? 999;
+          const bo = order[b.sortKey] ?? 999;
+
+          if (ao !== bo) {
+            return ao - bo;
           }
 
           return a.key.localeCompare(

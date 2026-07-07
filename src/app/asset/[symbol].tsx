@@ -47,6 +47,7 @@ type TabKey = "projection" | "history";
 type ParsedRoute = {
   asset: string;
   horizonH?: number;
+  modelId?: string;
 };
 
 type AssetDetail = {
@@ -66,6 +67,55 @@ const ASSET_DISPLAY_NAMES: Record<string, string> = {
   GBPUSD: "British Pound / US Dollar",
   USDJPY: "US Dollar / Japanese Yen",
 };
+
+const MODEL_VALIDATION_STATS: Record<
+  string,
+  {
+    accuracy: number;
+    n: number;
+    note: string;
+  }
+> = {
+  "AUDUSD-12": {
+    accuracy: 0.783333,
+    n: 60,
+    note: "No-leak validation sample. High-confidence AUDUSD 12h signals.",
+  },
+  "EURUSD-6": {
+    accuracy: 1.0,
+    n: 5,
+    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+  },
+  "EURUSD-12": {
+    accuracy: 0.814815,
+    n: 27,
+    note: "No-leak validation sample. Bearish-regime signal profile, one-sided regime warning.",
+  },
+  "GBPUSD-12": {
+    accuracy: 1.0,
+    n: 5,
+    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+  },
+  "USDJPY-6": {
+    accuracy: 0.613208,
+    n: 106,
+    note: "No-leak validation sample. Frequent USDJPY 6h signal profile.",
+  },
+  "USDJPY-12": {
+    accuracy: 0.675676,
+    n: 37,
+    note: "No-leak validation sample. USDJPY 12h medium-frequency signal profile.",
+  },
+};
+
+function getValidationStats(
+  symbol: string,
+  horizonH: number
+) {
+  return MODEL_VALIDATION_STATS[
+    `${symbol.toUpperCase()}-${horizonH}`
+  ];
+}
 
 function makeLockedAsset(
   symbol: string,
@@ -95,10 +145,14 @@ function makeLockedAsset(
 
 function parseRouteSymbol(raw: string): ParsedRoute {
   const cleaned = raw.toUpperCase();
-  const match = cleaned.match(/^([A-Z0-9]+)-(\d+)H$/);
+  const match = cleaned.match(/^([A-Z0-9]+)-(\d+)H(?:-(.+))?$/);
 
   if (match) {
-    return { asset: match[1], horizonH: Number(match[2]) };
+    return {
+      asset: match[1],
+      horizonH: Number(match[2]),
+      modelId: match[3] ? modelSlug(match[3]) : undefined,
+    };
   }
 
   return { asset: cleaned };
@@ -107,6 +161,25 @@ function parseRouteSymbol(raw: string): ParsedRoute {
 function pct(value?: number | null, digits = 1) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "N/A";
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+
+function signedPips(value?: number | null, digits = 1) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "N/A";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)} pips`;
+}
+
+function compactNumber(value?: number | null, digits = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "N/A";
+  return value.toFixed(digits);
+}
+
+function modelSlug(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, "_");
 }
 
 function formatPrice(value: number | undefined | null, symbol: string) {
@@ -453,72 +526,218 @@ function CandleForecastChart({
   );
 }
 
-function AccuracyCard({ summary }: { summary: PerformanceSummaryRow | null }) {
+function AccuracyCard({
+  summary,
+  symbol,
+  horizonH,
+  modelFamily,
+  asset,
+}: {
+  summary: PerformanceSummaryRow | null;
+  symbol: string;
+  horizonH: number;
+  modelFamily?: string;
+  asset?: ApiAsset;
+}) {
+  const validation = getValidationStats(
+    symbol,
+    horizonH
+  );
+
+  const isFinalAppV2 =
+    modelFamily === "clean_pro_final_app_v2";
+
+  const isMlp =
+    modelFamily?.includes("mlp_live_v1") ||
+    asset?.model_group === "mlp_live_v1" ||
+    asset?.source === "mlp_live_v1";
+
+  const useMlpValidation =
+    !!isMlp &&
+    typeof asset?.validation_direction_accuracy === "number";
+
+  // Same rule as dashboard:
+  // clean_pro_final_app_v2 and MLP variants use model-owned validation stats
+  // until backend performance becomes fully model-family aware.
+  const useValidationAccuracy =
+    useMlpValidation ||
+    (isFinalAppV2 && !!validation);
+
+  const hasLiveAccuracy =
+    !useValidationAccuracy &&
+    typeof summary?.direction_accuracy ===
+      "number";
+
+  const directionAccuracy =
+    useMlpValidation
+      ? asset?.validation_direction_accuracy ?? null
+      : useValidationAccuracy
+      ? validation?.accuracy ?? null
+      : hasLiveAccuracy
+      ? summary?.direction_accuracy ?? null
+      : validation?.accuracy ?? null;
+
+  const directionN =
+    useMlpValidation
+      ? asset?.validation_trades ?? 0
+      : useValidationAccuracy
+      ? validation?.n ?? 0
+      : hasLiveAccuracy
+      ? summary?.direction_predictions ?? 0
+      : validation?.n ?? 0;
+
+  const sourceLabel =
+    useMlpValidation
+      ? "Walk-forward MLP validation"
+      : useValidationAccuracy
+      ? "Validated test performance"
+      : hasLiveAccuracy
+      ? "Verified live performance"
+      : validation
+      ? "Validated test performance"
+      : "Verified performance";
+
   return (
     <Card className="mb-5">
-      <Text className="text-xl font-black text-white">Verified live performance</Text>
-      <Text className="mt-2 text-sm leading-6 text-zinc-500">
-        Saved forecasts are matched with the actual market price after the full
-        horizon. Neutral calls are excluded from direction accuracy.
+      <Text className="text-xl font-black text-white">
+        {sourceLabel}
       </Text>
 
-      {!summary ? (
-        <Text className="mt-4 text-sm font-bold text-yellow-300">
-          Performance report is not available yet.
-        </Text>
-      ) : (
+      <Text className="mt-2 text-sm leading-6 text-zinc-500">
+        Live forecasts are matched with the actual market price after the full
+        horizon. Until enough live samples are collected, the app shows the
+        latest no-leak validation sample separately.
+      </Text>
+
+      <View className="mt-4 flex-row gap-2">
+        <SmallMetric
+          label={
+            hasLiveAccuracy
+              ? "Live direction accuracy"
+              : validation
+              ? "Validation direction accuracy"
+              : "Direction accuracy"
+          }
+          value={
+            directionAccuracy === null
+              ? "Collecting"
+              : `${pct(directionAccuracy)} · n=${directionN}`
+          }
+          valueClassName={
+            hasLiveAccuracy
+              ? "text-emerald-300"
+              : validation
+              ? "text-cyan-300"
+              : "text-yellow-300"
+          }
+        />
+
+        <SmallMetric
+          label="Range close hit"
+          value={
+            typeof summary?.range_close_hit_rate === "number"
+              ? pct(summary.range_close_hit_rate)
+              : "N/A"
+          }
+        />
+      </View>
+
+      <View className="mt-2 flex-row gap-2">
+        <SmallMetric
+          label="Range path hit"
+          value={
+            typeof summary?.range_path_hit_rate === "number"
+              ? pct(summary.range_path_hit_rate)
+              : "N/A"
+          }
+        />
+
+        <SmallMetric
+          label="Average move error"
+          value={
+            typeof summary?.mu_mae === "number"
+              ? pct(summary.mu_mae, 3)
+              : "N/A"
+          }
+        />
+      </View>
+
+      <View className="mt-2 flex-row gap-2">
+        <SmallMetric
+          label="Evaluated live"
+          value={
+            summary
+              ? String(summary.evaluated_predictions)
+              : "0"
+          }
+        />
+
+        <SmallMetric
+          label="Neutral calls"
+          value={
+            summary
+              ? String(summary.neutral_predictions)
+              : "0"
+          }
+        />
+      </View>
+
+      {useMlpValidation ? (
         <>
-          <View className="mt-4 flex-row gap-2">
+          <View className="mt-2 flex-row gap-2">
             <SmallMetric
-              label="Direction accuracy"
-              value={
-                typeof summary.direction_accuracy === "number"
-                  ? `${pct(summary.direction_accuracy)} · n=${summary.direction_predictions}`
-                  : "Collecting"
-              }
+              label="Validated pips"
+              value={signedPips(asset?.validation_total_pips)}
               valueClassName="text-emerald-300"
             />
             <SmallMetric
-              label="Range close hit"
-              value={
-                typeof summary.range_close_hit_rate === "number"
-                  ? pct(summary.range_close_hit_rate)
-                  : "N/A"
-              }
+              label="Avg weekly pips"
+              value={signedPips(asset?.validation_avg_week_pips)}
             />
           </View>
 
           <View className="mt-2 flex-row gap-2">
             <SmallMetric
-              label="Range path hit"
+              label="Profitable weeks"
               value={
-                typeof summary.range_path_hit_rate === "number"
-                  ? pct(summary.range_path_hit_rate)
+                typeof asset?.validation_profitable_weeks === "number" &&
+                typeof asset?.validation_active_weeks === "number"
+                  ? `${asset.validation_profitable_weeks}/${asset.validation_active_weeks}`
                   : "N/A"
               }
+              valueClassName="text-cyan-300"
             />
             <SmallMetric
-              label="Average move error"
-              value={
-                typeof summary.mu_mae === "number"
-                  ? pct(summary.mu_mae, 3)
-                  : "N/A"
-              }
+              label="Profit factor"
+              value={compactNumber(asset?.validation_profit_factor)}
             />
           </View>
 
           <View className="mt-2 flex-row gap-2">
             <SmallMetric
-              label="Evaluated"
-              value={String(summary.evaluated_predictions)}
+              label="Max drawdown"
+              value={signedPips(asset?.validation_max_drawdown_pips)}
+              valueClassName="text-red-300"
             />
             <SmallMetric
-              label="Neutral calls"
-              value={String(summary.neutral_predictions)}
+              label="Win rate"
+              value={pct(asset?.validation_win_rate)}
             />
           </View>
         </>
-      )}
+      ) : null}
+
+      {!hasLiveAccuracy && validation ? (
+        <View className="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+          <Text className="text-xs uppercase tracking-wider text-cyan-300">
+            Validation note
+          </Text>
+
+          <Text className="mt-2 text-sm leading-6 text-zinc-300">
+            {asset?.validation_note ?? validation.note}
+          </Text>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -748,10 +967,14 @@ export default function AssetDetailScreen() {
       const asset = latest.assets.find((item) => {
         const symbol = getAssetSymbol(item);
         const horizon = item.horizon_h ?? 12;
+        const itemModelId = modelSlug(
+          item.model_id ?? item.model_family ?? item.source
+        );
 
         return (
           symbol === parsed.asset &&
-          (parsed.horizonH === undefined || horizon === parsed.horizonH)
+          (parsed.horizonH === undefined || horizon === parsed.horizonH) &&
+          (!parsed.modelId || itemModelId === parsed.modelId)
         );
       });
 
@@ -796,7 +1019,8 @@ export default function AssetDetailScreen() {
             ? fetchPerformanceHistory(
                 getAssetSymbol(asset),
                 horizonH,
-                120
+                120,
+                asset.model_family
               )
             : Promise.resolve([]),
         ]);
@@ -1077,6 +1301,81 @@ export default function AssetDetailScreen() {
                 <SmallMetric label="Model usage" value={detail.modelUsage} />
               </View>
 
+              <View className="mt-2 flex-row gap-2">
+                <SmallMetric
+                  label="Latest model output"
+                  value={
+                    typeof asset.prob_up === "number"
+                      ? `${pct(asset.prob_up)} up`
+                      : "N/A"
+                  }
+                />
+                <SmallMetric
+                  label="Model source"
+                  value={asset.prob_source_used ?? asset.public_status ?? "N/A"}
+                />
+              </View>
+
+              <View className="mt-2 flex-row gap-2">
+                <SmallMetric
+                  label="Threshold confidence"
+                  value={
+                    typeof asset.threshold_confidence === "number"
+                      ? pct(asset.threshold_confidence)
+                      : "N/A"
+                  }
+                />
+                <SmallMetric
+                  label="Active threshold"
+                  value={
+                    typeof asset.threshold_used === "number"
+                      ? pct(asset.threshold_used)
+                      : "N/A"
+                  }
+                />
+              </View>
+
+              {asset.model_group === "mlp_live_v1" ||
+              asset.source === "mlp_live_v1" ||
+              asset.model_family?.includes("mlp_live_v1") ? (
+                <>
+                  <View className="mt-2 flex-row gap-2">
+                    <SmallMetric
+                      label="Validated pips"
+                      value={signedPips(asset.validation_total_pips)}
+                      valueClassName="text-emerald-300"
+                    />
+                    <SmallMetric
+                      label="Profitable weeks"
+                      value={
+                        typeof asset.validation_profitable_weeks === "number" &&
+                        typeof asset.validation_active_weeks === "number"
+                          ? `${asset.validation_profitable_weeks}/${asset.validation_active_weeks}`
+                          : "N/A"
+                      }
+                      valueClassName="text-cyan-300"
+                    />
+                  </View>
+
+                  <View className="mt-2 flex-row gap-2">
+                    <SmallMetric
+                      label="TP1 / TP2"
+                      value={
+                        typeof asset.tp1_pips === "number" &&
+                        typeof asset.tp2_pips === "number"
+                          ? `${asset.tp1_pips.toFixed(1)} / ${asset.tp2_pips.toFixed(1)} pips`
+                          : "N/A"
+                      }
+                    />
+                    <SmallMetric
+                      label="SL"
+                      value={signedPips(asset.sl_pips)}
+                      valueClassName="text-red-300"
+                    />
+                  </View>
+                </>
+              ) : null}
+
               <View className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
                 <Text className="text-xs uppercase tracking-wider text-zinc-500">
                   Signal status
@@ -1108,7 +1407,16 @@ export default function AssetDetailScreen() {
             <PairContextCard asset={asset} marketState={marketState} />
 
             {canSeePerformance ? (
-              <AccuracyCard summary={summary} />
+              <AccuracyCard
+                summary={summary}
+                symbol={detail.symbol}
+                horizonH={detail.horizonH}
+                modelFamily={
+                  asset.model_family ??
+                  asset.source
+                }
+                asset={asset}
+              />
             ) : null}
           </View>
         ) : canSeePerformance ? (

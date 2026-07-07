@@ -53,6 +53,10 @@ export type CurrencyStrengthItem = {
 export type ApiAsset = {
   source?: string;
   model_family?: string;
+  model_id?: string;
+  model_group?: string;
+  model_label?: string;
+  model_source?: string;
 
   asset: string;
   symbol?: string;
@@ -84,6 +88,44 @@ export type ApiAsset = {
   confidence?: number | null;
   confidence_label?: string;
   signal_strength?: string;
+
+  prob_up?: number | null;
+  prob_down?: number | null;
+  prob_used?: number | null;
+  prob_source_used?: string;
+  threshold_used?: number | null;
+  threshold_confidence?: number | null;
+  public_status?: string;
+
+  validation_direction_accuracy?: number | null;
+  validation_win_rate?: number | null;
+  validation_trades?: number | null;
+  validation_total_pips?: number | null;
+  validation_avg_week_pips?: number | null;
+  validation_profitable_weeks?: number | null;
+  validation_active_weeks?: number | null;
+  validation_profit_factor?: number | null;
+  validation_max_drawdown_pips?: number | null;
+  validation_worst_week_pips?: number | null;
+  validation_note?: string;
+
+  tp1_pips?: number | null;
+  tp2_pips?: number | null;
+  sl_pips?: number | null;
+  tp1_price?: number | null;
+  tp2_price?: number | null;
+  sl_price?: number | null;
+
+  trade_management?: {
+    strategy?: string;
+    cooldown_bars?: number;
+    entry_rule?: string;
+    tp1_rule?: string;
+    breakeven_rule?: string;
+    tp2_rule?: string;
+    sl_rule?: string;
+    cost_pips_assumed?: number | null;
+  };
 
   expert_top?: string;
   expert_profile?: string;
@@ -171,6 +213,9 @@ export type PerformanceSummaryRow = {
 export type PerformanceHistoryRow = {
   asset: string;
   horizon_h: number;
+  model_family?: string;
+  model_id?: string;
+  model_group?: string;
 
   prediction_time_utc?: string;
   prediction_time_belgrade?: string;
@@ -207,6 +252,14 @@ export type PerformanceHistoryRow = {
   confidence?: number | null;
   confidence_label?: string;
   signal_strength?: string;
+
+  trade_status?: string;
+  net_pips?: number | null;
+  gross_pips?: number | null;
+  exit_reason?: string | null;
+  tp1_pips?: number | null;
+  tp2_pips?: number | null;
+  sl_pips?: number | null;
 
   evaluation_status?:
     | "evaluated"
@@ -665,6 +718,16 @@ function mapPredictionHistoryRow(
       row.asset.toUpperCase(),
     horizon_h:
       row.horizon_h,
+    model_family:
+      row.model_family,
+    model_id:
+      firstString(
+        payload.model_id
+      ),
+    model_group:
+      firstString(
+        payload.model_group
+      ),
 
     prediction_time_utc:
       row.prediction_time_utc,
@@ -826,6 +889,36 @@ function mapPredictionHistoryRow(
         payload.signal_strength
       ),
 
+    trade_status:
+      firstString(
+        payload.trade_status,
+        payload.status
+      ),
+    net_pips:
+      asFiniteNumber(
+        payload.net_pips
+      ),
+    gross_pips:
+      asFiniteNumber(
+        payload.gross_pips
+      ),
+    exit_reason:
+      firstString(
+        payload.exit_reason
+      ),
+    tp1_pips:
+      asFiniteNumber(
+        payload.tp1_pips
+      ),
+    tp2_pips:
+      asFiniteNumber(
+        payload.tp2_pips
+      ),
+    sl_pips:
+      asFiniteNumber(
+        payload.sl_pips
+      ),
+
     evaluation_status:
       firstString(
         row.evaluation_status,
@@ -838,7 +931,8 @@ function mapPredictionHistoryRow(
 export async function fetchPerformanceHistory(
   asset: string,
   horizonH: number,
-  limit = 100
+  limit = 100,
+  modelFamily?: string
 ): Promise<PerformanceHistoryRow[]> {
   const normalizedAsset =
     asset.toUpperCase();
@@ -851,10 +945,7 @@ export async function fetchPerformanceHistory(
     )
   );
 
-  const {
-    data,
-    error,
-  } = await supabase
+  let query = supabase
     .from("predictions")
     .select(
       [
@@ -887,7 +978,19 @@ export async function fetchPerformanceHistory(
     .eq(
       "horizon_h",
       horizonH
-    )
+    );
+
+  if (modelFamily) {
+    query = query.eq(
+      "model_family",
+      modelFamily
+    );
+  }
+
+  const {
+    data,
+    error,
+  } = await query
     .order(
       "prediction_time_utc",
       {

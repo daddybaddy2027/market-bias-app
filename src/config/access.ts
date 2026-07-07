@@ -4,8 +4,7 @@ export type AccessTier =
 
 /*
   Permanent lock system stays available, but public beta bypasses it.
-  During public beta, current model outputs AND verified accuracy/history
-  are intentionally unlocked for transparency.
+  During public beta, model outputs and performance are visible for trust-building.
 */
 export const ENABLE_PRO_LOCKS =
   true;
@@ -18,35 +17,23 @@ export const PUBLIC_PREVIEW_PERFORMANCE =
 
 export const FREE_MODEL_KEYS =
   new Set([
-    // Existing public / validation models
-    "GBPJPY-12",
+    // Public beta free models
+    "EURUSD-3",
     "EURUSD-6",
-
-    // New final_app_v2 candidates that can stay visible in public beta
-    "AUDUSD-12",
     "USDJPY-6",
   ]);
 
 export const PRO_MODEL_KEYS =
   new Set([
-    // Existing old/prod candidates
-    "EURUSD-3",
-    "GBPAUD-3",
-    "GBPAUD-6",
-
-    // Existing legacy candidate kept as Pro-tier metadata if re-enabled later
-    "EURJPY-12",
-
-    // New final_app_v2 validation / candidate models
+    // Public beta Pro models
+    "AUDUSD-12",
     "EURUSD-12",
     "GBPUSD-12",
     "USDJPY-12",
+    "GBPJPY-12",
   ]);
 
-/*
-  Nothing is hidden in public beta.
-  When beta ends, hide experimental symbols here instead of deleting models.
-*/
+// Public beta: do not hide any validated public symbol.
 export const HIDDEN_PUBLIC_SYMBOLS =
   new Set<string>([]);
 
