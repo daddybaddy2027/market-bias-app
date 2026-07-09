@@ -109,38 +109,38 @@ const MODEL_VALIDATION_STATS: Record<
   "AUDUSD-12": {
     accuracy: 0.783333,
     n: 60,
-    label: "Validation accuracy",
-    note: "No-leak validation sample. High-confidence AUDUSD 12h signals.",
+    label: "Model accuracy",
+    note: "Historical model sample. High-confidence AUDUSD 12h signals.",
   },
   "EURUSD-6": {
     accuracy: 1.0,
     n: 5,
-    label: "Validation accuracy",
-    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+    label: "Model accuracy",
+    note: "Low-sample high-conviction model history. Treat with caution until more live samples are collected.",
   },
   "EURUSD-12": {
     accuracy: 0.814815,
     n: 27,
-    label: "Validation accuracy",
-    note: "No-leak validation sample. Bearish-regime signal profile, one-sided regime warning.",
+    label: "Model accuracy",
+    note: "Historical model sample. Bearish-regime signal profile, one-sided regime warning.",
   },
   "GBPUSD-12": {
     accuracy: 1.0,
     n: 5,
-    label: "Validation accuracy",
-    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+    label: "Model accuracy",
+    note: "Low-sample high-conviction model history. Treat with caution until more live samples are collected.",
   },
   "USDJPY-6": {
     accuracy: 0.613208,
     n: 106,
-    label: "Validation accuracy",
-    note: "No-leak validation sample. Frequent USDJPY 6h signal profile.",
+    label: "Model accuracy",
+    note: "Historical model sample. Frequent USDJPY 6h signal profile.",
   },
   "USDJPY-12": {
     accuracy: 0.675676,
     n: 37,
-    label: "Validation accuracy",
-    note: "No-leak validation sample. USDJPY 12h medium-frequency signal profile.",
+    label: "Model accuracy",
+    note: "Historical model sample. USDJPY 12h medium-frequency signal profile.",
   },
 };
 
@@ -330,7 +330,13 @@ function normalizeAsset(
     ? `${symbol}-${horizonH}h-${modelSlug(modelId)}`
     : `${symbol}-${horizonH}h`;
   const summary = summaryMap.get(baseKey);
-  const tier = getModelTier(symbol, horizonH);
+  const tier = getModelTier(
+    symbol,
+    horizonH,
+    modelId,
+    modelFamily,
+    item.model_group
+  );
   const validation = MODEL_VALIDATION_STATS[baseKey];
 
   const isFinalAppV2 =
@@ -419,7 +425,10 @@ function normalizeAsset(
     locked: isModelLocked(
       symbol,
       horizonH,
-      userIsPro
+      userIsPro,
+      modelId,
+      modelFamily,
+      item.model_group
     ),
     liveAccuracy,
     accuracyN,
@@ -581,6 +590,15 @@ function AssetCard({
     item.bias
   );
 
+  const badgeClasses =
+    item.locked
+      ? {
+          text: "text-violet-300",
+          bg: "bg-violet-500/15",
+          border: "border-violet-500/40",
+        }
+      : classes;
+
   function openCard() {
     if (item.locked) {
       router.push("/pricing" as never);
@@ -595,9 +613,7 @@ function AssetCard({
   const accuracyLabel =
     item.accuracySource === "live"
       ? "Live direction accuracy"
-      : item.accuracySource === "validation"
-      ? "Validation direction accuracy"
-      : "Direction accuracy";
+      : "Model direction accuracy";
 
   const accuracyValue =
     item.liveAccuracy === null
@@ -627,14 +643,10 @@ function AssetCard({
 
         <View className="items-end gap-2">
           <View
-            className={`rounded-full border px-3 py-1 ${classes.bg} ${classes.border}`}
+            className={`rounded-full border px-3 py-1 ${badgeClasses.bg} ${badgeClasses.border}`}
           >
             <Text
-              className={`text-xs font-black ${
-                item.locked
-                  ? "text-violet-300"
-                  : classes.text
-              }`}
+              className={`text-xs font-black ${badgeClasses.text}`}
             >
               {item.locked
                 ? "PRO LOCKED"
@@ -712,7 +724,9 @@ function AssetCard({
         <SmallMetric
           label="Latest model output"
           value={
-            typeof item.probUp === "number"
+            item.locked
+              ? "Unlock Pro"
+              : typeof item.probUp === "number"
               ? `${pct(item.probUp, 1)} up`
               : "N/A"
           }
@@ -721,9 +735,11 @@ function AssetCard({
         <SmallMetric
           label="Model source"
           value={
-            item.probSourceUsed ??
-            item.publicStatus ??
-            "N/A"
+            item.locked
+              ? "Pro model"
+              : item.probSourceUsed ??
+                item.publicStatus ??
+                "N/A"
           }
         />
       </View>
@@ -732,7 +748,7 @@ function AssetCard({
         <>
           <View className="mt-2 flex-row gap-2">
             <SmallMetric
-              label="Validated pips"
+              label="Historical pips"
               value={signedPips(item.validationTotalPips)}
               valueClassName={
                 typeof item.validationTotalPips === "number" &&
@@ -774,7 +790,7 @@ function AssetCard({
             />
 
             <SmallMetric
-              label="Validation win rate"
+              label="Win rate"
               value={pct(item.validationWinRate, 1)}
             />
           </View>
@@ -801,7 +817,7 @@ function AssetCard({
           item.validationNote ? (
             <View className="mt-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-3">
               <Text className="text-xs uppercase tracking-wider text-cyan-300">
-                Validation note
+                Model history note
               </Text>
 
               <Text className="mt-1 text-sm leading-6 text-zinc-300">
@@ -1191,7 +1207,10 @@ export default function HomeScreen() {
 
             return isModelPubliclyAllowed(
               symbol,
-              horizon
+              horizon,
+              item.model_id,
+              item.model_family,
+              item.model_group
             );
           })
           .map((item) =>
@@ -1513,7 +1532,7 @@ export default function HomeScreen() {
         <SectionTitle
           kicker="Predictions"
           title="Live model assets"
-          subtitle={PUBLIC_PREVIEW_MODE ? "All currently validated public models are temporarily unlocked during the public beta." : "Selected models remain free. Pro models show their existence while the current bias, projected zone, confidence and full history remain locked."}
+          subtitle={PUBLIC_PREVIEW_MODE ? "Free models show full current forecasts. Pro models show historical performance teasers while current bias, probability and signal status stay locked." : "Selected models remain free. Pro models show their existence while the current bias, projected zone, confidence and full history remain locked."}
         />
 
         {visibleAssets.length ? (
@@ -1528,7 +1547,7 @@ export default function HomeScreen() {
         ) : (
           <Card className="mb-6">
             <Text className="text-lg font-black text-white">
-              No validated public models
+              No public models
             </Text>
           </Card>
         )}

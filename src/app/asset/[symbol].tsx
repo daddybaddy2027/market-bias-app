@@ -79,32 +79,32 @@ const MODEL_VALIDATION_STATS: Record<
   "AUDUSD-12": {
     accuracy: 0.783333,
     n: 60,
-    note: "No-leak validation sample. High-confidence AUDUSD 12h signals.",
+    note: "No-leak model sample. High-confidence AUDUSD 12h signals.",
   },
   "EURUSD-6": {
     accuracy: 1.0,
     n: 5,
-    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+    note: "Low-sample high-conviction model history. Treat with caution until more live samples are collected.",
   },
   "EURUSD-12": {
     accuracy: 0.814815,
     n: 27,
-    note: "No-leak validation sample. Bearish-regime signal profile, one-sided regime warning.",
+    note: "No-leak model sample. Bearish-regime signal profile, one-sided regime warning.",
   },
   "GBPUSD-12": {
     accuracy: 1.0,
     n: 5,
-    note: "Low-sample high-conviction validation. Treat with caution until more live samples are collected.",
+    note: "Low-sample high-conviction model history. Treat with caution until more live samples are collected.",
   },
   "USDJPY-6": {
     accuracy: 0.613208,
     n: 106,
-    note: "No-leak validation sample. Frequent USDJPY 6h signal profile.",
+    note: "No-leak model sample. Frequent USDJPY 6h signal profile.",
   },
   "USDJPY-12": {
     accuracy: 0.675676,
     n: 37,
-    note: "No-leak validation sample. USDJPY 12h medium-frequency signal profile.",
+    note: "No-leak model sample. USDJPY 12h medium-frequency signal profile.",
   },
 };
 
@@ -588,14 +588,14 @@ function AccuracyCard({
 
   const sourceLabel =
     useMlpValidation
-      ? "Walk-forward MLP validation"
+      ? "MLP model history"
       : useValidationAccuracy
-      ? "Validated test performance"
+      ? "Model history"
       : hasLiveAccuracy
-      ? "Verified live performance"
+      ? "Live model performance"
       : validation
-      ? "Validated test performance"
-      : "Verified performance";
+      ? "Model history"
+      : "Model performance";
 
   return (
     <Card className="mb-5">
@@ -604,9 +604,9 @@ function AccuracyCard({
       </Text>
 
       <Text className="mt-2 text-sm leading-6 text-zinc-500">
-        Live forecasts are matched with the actual market price after the full
-        horizon. Until enough live samples are collected, the app shows the
-        latest no-leak validation sample separately.
+        Model results are shown as historical performance and completed live
+        predictions. Current Pro forecasts remain protected for active
+        subscribers.
       </Text>
 
       <View className="mt-4 flex-row gap-2">
@@ -614,9 +614,7 @@ function AccuracyCard({
           label={
             hasLiveAccuracy
               ? "Live direction accuracy"
-              : validation
-              ? "Validation direction accuracy"
-              : "Direction accuracy"
+              : "Model direction accuracy"
           }
           value={
             directionAccuracy === null
@@ -686,7 +684,7 @@ function AccuracyCard({
         <>
           <View className="mt-2 flex-row gap-2">
             <SmallMetric
-              label="Validated pips"
+              label="Historical pips"
               value={signedPips(asset?.validation_total_pips)}
               valueClassName="text-emerald-300"
             />
@@ -730,7 +728,7 @@ function AccuracyCard({
       {!hasLiveAccuracy && validation ? (
         <View className="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
           <Text className="text-xs uppercase tracking-wider text-cyan-300">
-            Validation note
+            Model history note
           </Text>
 
           <Text className="mt-2 text-sm leading-6 text-zinc-300">
@@ -754,7 +752,7 @@ function HistoryTab({
       <Card>
         <Text className="text-xl font-black text-white">Prediction history</Text>
         <Text className="mt-3 text-sm leading-6 text-zinc-400">
-          No verified history is available for this asset and horizon yet.
+          No model history is available for this asset and horizon yet.
         </Text>
       </Card>
     );
@@ -764,7 +762,7 @@ function HistoryTab({
     <View>
       <Card className="mb-5">
         <Text className="text-xl font-black text-white">
-          Verified prediction history
+          Model history
         </Text>
         <Text className="mt-2 text-sm leading-6 text-zinc-500">
           Pending forecasts remain visible but do not enter accuracy until the
@@ -932,33 +930,6 @@ export default function AssetDetailScreen() {
       const routeHorizon =
         parsed.horizonH ?? 12;
 
-      if (
-        isModelLocked(
-          parsed.asset,
-          routeHorizon,
-          isPro
-        )
-      ) {
-        const lockedAsset =
-          makeLockedAsset(
-            parsed.asset,
-            routeHorizon
-          );
-
-        setMarketState(null);
-        setDetail({
-          item: lockedAsset,
-          symbol: parsed.asset,
-          horizonH: routeHorizon,
-          confidence: 0,
-          modelUsage: "Pro",
-        });
-        setCandles([]);
-        setSummary(null);
-        setHistory([]);
-        return;
-      }
-
       const latest =
         await fetchMarketState();
 
@@ -998,7 +969,10 @@ export default function AssetDetailScreen() {
         canViewModelPerformance(
           getAssetSymbol(asset),
           horizonH,
-          isPro
+          isPro,
+          asset.model_id,
+          asset.model_family,
+          asset.model_group
         );
 
       const [candlesResult, summaryResult, historyResult] =
@@ -1105,14 +1079,20 @@ export default function AssetDetailScreen() {
     isModelLocked(
       detail.symbol,
       detail.horizonH,
-      isPro
+      isPro,
+      asset.model_id,
+      asset.model_family,
+      asset.model_group
     );
 
   const canSeePerformance =
     canViewModelPerformance(
       detail.symbol,
       detail.horizonH,
-      isPro
+      isPro,
+      asset.model_id,
+      asset.model_family,
+      asset.model_group
     );
 
   if (directlyLocked) {
@@ -1144,14 +1124,14 @@ export default function AssetDetailScreen() {
 
           <Text className="mt-5 text-base leading-7 text-zinc-300">
             The current bias, probability zone, confidence and
-            verified prediction history are part of AI Market
+            model history are part of AI Market
             Expert Pro.
           </Text>
 
           <View className="mt-5 rounded-2xl border border-zinc-800 bg-black/30 p-4">
             <Text className="text-sm leading-6 text-zinc-400">
               Sign in with an active Pro account to unlock this
-              model. The forecast payload and verified history
+              model. The forecast payload and model history
               are protected in Supabase by row-level access rules.
             </Text>
           </View>
@@ -1341,7 +1321,7 @@ export default function AssetDetailScreen() {
                 <>
                   <View className="mt-2 flex-row gap-2">
                     <SmallMetric
-                      label="Validated pips"
+                      label="Historical pips"
                       value={signedPips(asset.validation_total_pips)}
                       valueClassName="text-emerald-300"
                     />
@@ -1428,7 +1408,7 @@ export default function AssetDetailScreen() {
             </Text>
 
             <Text className="mt-2 text-sm leading-6 text-zinc-400">
-              Verified prediction history is available to active Pro accounts.
+              Model history is available to active Pro accounts.
             </Text>
           </Card>
         )}
@@ -1446,3 +1426,4 @@ export default function AssetDetailScreen() {
     </SafeAreaView>
   );
 }
+
