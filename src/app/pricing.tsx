@@ -9,61 +9,25 @@ import {
   View,
 } from "react-native";
 
+import { PayPalSubscribeButton } from "../components/PayPalSubscribeButton";
+import { FREE_MODEL_KEYS, PRO_MODEL_KEYS } from "../config/access";
 import { useAuth } from "../providers/AuthProvider";
 
-import {
-  SupportProjectButton,
-} from "../components/SupportProjectButton";
-
-import {
-  FREE_MODEL_KEYS,
-  PRO_MODEL_KEYS,
-  PUBLIC_PREVIEW_MODE,
-  PUBLIC_PREVIEW_PERFORMANCE,
-} from "../config/access";
-
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <View
-      className={`rounded-3xl border border-zinc-800 bg-zinc-950 p-5 ${className}`}
-    >
+    <View className={`rounded-3xl border border-zinc-800 bg-zinc-950 p-5 ${className}`}>
       {children}
     </View>
   );
 }
 
-function FeatureRow({
-  children,
-  included = true,
-}: {
-  children: React.ReactNode;
-  included?: boolean;
-}) {
+function FeatureRow({ children, included = true }: { children: React.ReactNode; included?: boolean }) {
   return (
     <View className="mt-3 flex-row items-start">
-      <Text
-        className={`mr-3 text-base font-black ${
-          included
-            ? "text-emerald-300"
-            : "text-zinc-600"
-        }`}
-      >
+      <Text className={`mr-3 text-base font-black ${included ? "text-emerald-300" : "text-zinc-600"}`}>
         {included ? "✓" : "—"}
       </Text>
-
-      <Text
-        className={`flex-1 text-sm leading-6 ${
-          included
-            ? "text-zinc-300"
-            : "text-zinc-600"
-        }`}
-      >
+      <Text className={`flex-1 text-sm leading-6 ${included ? "text-zinc-300" : "text-zinc-600"}`}>
         {children}
       </Text>
     </View>
@@ -71,239 +35,98 @@ function FeatureRow({
 }
 
 export default function PricingScreen() {
-  const {
-    isAuthenticated,
-    isPro,
-  } = useAuth();
+  const { isAuthenticated, isPro } = useAuth();
 
   return (
     <SafeAreaView
       className="flex-1 bg-black"
-      style={
-        Platform.OS === "web"
-          ? ({ height: "100vh" } as any)
-          : undefined
-      }
+      style={Platform.OS === "web" ? ({ height: "100vh" } as any) : undefined}
     >
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-5 pb-24 pt-4"
-      >
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pb-24 pt-4">
         <Pressable
           onPress={() => router.back()}
           className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 active:opacity-70"
         >
-          <Text className="font-bold text-zinc-300">
-            ← Back to dashboard
-          </Text>
+          <Text className="font-bold text-zinc-300">← Back to dashboard</Text>
         </Pressable>
 
         <View className="mb-7">
           <Text className="text-xs font-black uppercase tracking-[4px] text-violet-300">
-            Plans
+            AI MARKET EXPERT PRO
           </Text>
-
           <Text className="mt-4 text-4xl font-black leading-tight text-white">
-            Choose how much of the market picture you need
+            Unlock the full live model set
           </Text>
-
           <Text className="mt-4 text-base leading-7 text-zinc-400">
-            The Free plan keeps the core dashboard useful.
-            Pro unlocks the complete model set, deeper
-            cross-asset interpretation and full verified history.
+            Free keeps the core dashboard useful. Pro unlocks current bias, projected zones,
+            full model pages and deeper history for the locked model set.
           </Text>
         </View>
 
-        {PUBLIC_PREVIEW_MODE ? (
-          <Card className="mb-5 border-cyan-500/30 bg-cyan-500/10">
-            <Text className="text-xs font-black uppercase tracking-[3px] text-cyan-300">
-              Public beta preview
-            </Text>
-
-            <Text className="mt-3 text-xl font-black text-white">
-              Pro model views are temporarily available without payment
-            </Text>
-
-            <Text className="mt-3 text-sm leading-6 text-zinc-300">
-              While the official subscription system is being finalized,
-              visitors can inspect the complete current model set and the
-              broader cross-asset environment.
-            </Text>
-
-            {PUBLIC_PREVIEW_PERFORMANCE ? (
-              <Text className="mt-3 text-sm leading-6 text-cyan-200">
-                Verified accuracy and prediction history are also unlocked
-                during the beta so results can be judged transparently.
-              </Text>
-            ) : null}
-          </Card>
-        ) : null}
-
-        <Card className="mb-5">
+        <Card className="mb-5 border-emerald-500/30 bg-emerald-500/10">
           <View className="flex-row items-start justify-between">
-            <View>
-              <Text className="text-2xl font-black text-white">
-                Free
-              </Text>
-
-              <Text className="mt-1 text-sm text-zinc-500">
-                Core market intelligence
-              </Text>
+            <View className="flex-1 pr-4">
+              <Text className="text-2xl font-black text-white">Free</Text>
+              <Text className="mt-1 text-sm text-zinc-400">Core market intelligence</Text>
             </View>
-
             <View className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1">
-              <Text className="text-xs font-black text-emerald-300">
-                €0
-              </Text>
+              <Text className="text-xs font-black text-emerald-300">€0</Text>
             </View>
           </View>
 
-          <Text className="mt-5 text-3xl font-black text-white">
-            2 live models
-          </Text>
-
-          <Text className="mt-1 text-sm text-zinc-500">
-            {Array.from(FREE_MODEL_KEYS).join(" · ")}
-          </Text>
-
-          <FeatureRow>
-            Complete currency-strength ranking
-          </FeatureRow>
-
-          <FeatureRow>
-            Equities, volatility, USD and JPY-haven drivers
-          </FeatureRow>
-
-          <FeatureRow>
-            Active regime and composite risk score
-          </FeatureRow>
-
-          <FeatureRow>
-            Selected prediction details and chart
-          </FeatureRow>
-
-          <FeatureRow included={PUBLIC_PREVIEW_MODE}>
-            Complete model set
-            {PUBLIC_PREVIEW_MODE
-              ? " · temporarily unlocked in public beta"
-              : ""}
-          </FeatureRow>
-
-          <FeatureRow included={PUBLIC_PREVIEW_MODE}>
-            Full rates, metals and risk-appetite interpretation
-          </FeatureRow>
-
-          <FeatureRow included={PUBLIC_PREVIEW_PERFORMANCE}>
-            Complete verified prediction history and live accuracy
-          </FeatureRow>
+          <FeatureRow>4 live models: {Array.from(FREE_MODEL_KEYS).join(" · ")}</FeatureRow>
+          <FeatureRow>Public macro state and core cross-asset context</FeatureRow>
+          <FeatureRow>Selected model history and accuracy</FeatureRow>
+          <FeatureRow included={false}>Current Pro model bias and projected zones</FeatureRow>
+          <FeatureRow included={false}>Full Pro prediction history and model detail pages</FeatureRow>
         </Card>
 
         <Card className="mb-5 border-violet-500/40 bg-violet-500/10">
           <View className="flex-row items-start justify-between">
-            <View>
-              <Text className="text-2xl font-black text-white">
-                Pro Beta
-              </Text>
-
-              <Text className="mt-1 text-sm text-violet-200">
-                Complete market-intelligence layer
-              </Text>
+            <View className="flex-1 pr-4">
+              <Text className="text-2xl font-black text-white">Pro</Text>
+              <Text className="mt-1 text-sm text-zinc-400">Full market model access</Text>
             </View>
-
-            <View className="rounded-full border border-violet-400/50 bg-violet-500/20 px-3 py-1">
-              <Text className="text-xs font-black text-violet-200">
-                PLANNED
-              </Text>
+            <View className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1">
+              <Text className="text-xs font-black text-violet-200">MONTHLY</Text>
             </View>
           </View>
 
-          <View className="mt-5 flex-row items-end">
-            <Text className="text-4xl font-black text-white">
-              €9.99
-            </Text>
+          <FeatureRow>9 Pro models: {Array.from(PRO_MODEL_KEYS).join(" · ")}</FeatureRow>
+          <FeatureRow>Current Pro bias, probability, confidence and forecast zones</FeatureRow>
+          <FeatureRow>Full Pro model detail pages and prediction history</FeatureRow>
+          <FeatureRow>Trading-model pips, win-rate, profit factor and drawdown context</FeatureRow>
+          <FeatureRow>Automatic activation after PayPal subscription approval</FeatureRow>
 
-            <Text className="mb-1 ml-2 text-sm text-zinc-400">
-              / month
-            </Text>
+          <View className="mt-6">
+            {isAuthenticated ? (
+              <PayPalSubscribeButton />
+            ) : (
+              <Pressable
+                onPress={() => router.push("/login" as never)}
+                className="rounded-2xl border border-violet-500/40 bg-violet-500/20 px-5 py-4 active:opacity-70"
+              >
+                <Text className="text-center font-black text-violet-200">
+                  Create account before subscribing
+                </Text>
+              </Pressable>
+            )}
           </View>
 
-          <Text className="mt-2 text-sm text-zinc-400">
-            Beta price. Cancel anytime after subscriptions launch.
-          </Text>
-
-          <FeatureRow>
-            All Free features
-          </FeatureRow>
-
-          <FeatureRow>
-            Full public model set, currently including{" "}
-            {Array.from(PRO_MODEL_KEYS).join(" · ")}
-          </FeatureRow>
-
-          <FeatureRow>
-            Yields / rates, metals and detailed risk-appetite drivers
-          </FeatureRow>
-
-          <FeatureRow>
-            Full projected zones and verified prediction history
-          </FeatureRow>
-
-          <FeatureRow>
-            Accuracy by asset, horizon and confidence sample
-          </FeatureRow>
-
-          <FeatureRow>
-            Future Market Clarity, Cross-Asset Agreement and
-            Breakout Pressure tools
-          </FeatureRow>
-
-          <View className="mt-6 rounded-2xl border border-violet-400/40 bg-black/30 p-4">
-            <Text className="text-base font-black text-violet-200">
-              Login is now available
+          {isPro ? (
+            <Text className="mt-4 text-sm leading-6 text-emerald-300">
+              Your account already has Pro access. Refresh the dashboard if a card still looks locked.
             </Text>
-
-            <Text className="mt-2 text-sm leading-6 text-zinc-400">
-              Create a Free account now. Pro subscriptions are the next
-              step and will activate automatically after payment
-              integration is completed.
-            </Text>
-          </View>
-
-          <Pressable
-            onPress={() =>
-              router.push(
-                (isAuthenticated
-                  ? "/account"
-                  : "/login") as never
-              )
-            }
-            className="mt-5 rounded-2xl border border-violet-500/40 bg-violet-500/15 px-5 py-4 active:opacity-70"
-          >
-            <Text className="text-center font-black text-violet-200">
-              {isAuthenticated
-                ? isPro
-                  ? "Open Pro account"
-                  : "Open Free account"
-                : "Sign in or create account"}
-            </Text>
-          </Pressable>
+          ) : null}
         </Card>
 
-        <SupportProjectButton />
-
-        <Card className="mt-5">
-          <Text className="text-xl font-black text-white">
-            Why a subscription?
-          </Text>
-
+        <Card>
+          <Text className="text-xl font-black text-white">Why subscription?</Text>
           <Text className="mt-3 text-sm leading-6 text-zinc-400">
-            The platform continuously downloads data, calculates
-            thousands of cross-asset features, runs several
-            probabilistic models and verifies forecasts against
-            later market prices. Pro supports continued data,
-            infrastructure and model development rather than
-            selling a magical certainty machine, because those
-            mostly belong in advertisements and court exhibits.
+            The platform continuously downloads market data, calculates cross-asset features,
+            runs several probabilistic models and verifies forecasts against later prices.
+            Pro funds the infrastructure and model development, not a magic certainty machine,
+            because those belong in advertisements and legal exhibits.
           </Text>
         </Card>
       </ScrollView>

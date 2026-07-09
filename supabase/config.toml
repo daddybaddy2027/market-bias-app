@@ -1,0 +1,5 @@
+# Supabase function config
+# PayPal webhooks do not send Supabase JWT, so JWT verification must be disabled.
+
+[functions.paypal-webhook]
+verify_jwt = false
