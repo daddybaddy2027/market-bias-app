@@ -17,6 +17,7 @@ import {
   CurrencyStrengthItem,
   MarketDriver,
   MarketState,
+  ModelCatalogItem,
   PerformanceSummaryRow,
   fetchMarketState,
   fetchPerformanceSummary,
@@ -84,6 +85,26 @@ type CardAsset = {
   validationProfitFactor?: number | null;
   validationMaxDrawdownPips?: number | null;
   validationWinRate?: number | null;
+
+  modelKey?: string;
+  displayName?: string;
+  shortName?: string;
+  accessTierRaw?: string;
+  modelType?: string;
+  modelMode?: string;
+  modelPurpose?: string;
+  headlineMetric?: string;
+  publicNote?: string;
+  liveEvaluatedN?: number | null;
+  livePendingN?: number | null;
+  liveDirectionN?: number | null;
+  liveDirectionHits?: number | null;
+  liveDirectionAccuracy?: number | null;
+  liveRangeCloseN?: number | null;
+  liveRangeCloseAccuracy?: number | null;
+  liveRangePathN?: number | null;
+  liveRangePathAccuracy?: number | null;
+  currentPredictionLocked?: boolean;
 };
 
 type ModelPreview = {
@@ -144,6 +165,129 @@ const MODEL_VALIDATION_STATS: Record<
   },
 };
 
+type PromotedModelStat = {
+  kind: "direction" | "range";
+  accuracy: number;
+  n: number;
+  label: string;
+  note?: string;
+};
+
+// These are the clean model-history / validation numbers that were already
+// shown on the site before the new per-model live tracker was added.
+// We do NOT promote tiny or bad early live samples in the public model board.
+// Live tracking can still be shown later once we explicitly decide the sample
+// is large enough and clean enough for a specific model.
+const PROMOTED_MODEL_STATS: Record<string, PromotedModelStat> = {
+  EURUSD_3H_PROD_V1: {
+    kind: "direction",
+    accuracy: 0.559,
+    n: 143,
+    label: "Live direction accuracy",
+  },
+  AUDUSD_12H_MLP_CONS: {
+    kind: "direction",
+    accuracy: 0.625,
+    n: 32,
+    label: "Model direction accuracy",
+  },
+  USDJPY_6H_FINAL_APP_V2: {
+    kind: "direction",
+    accuracy: 0.613,
+    n: 106,
+    label: "Model direction accuracy",
+  },
+  AUDUSD_12H_FINAL_APP_V2: {
+    kind: "direction",
+    accuracy: 0.783,
+    n: 60,
+    label: "Model direction accuracy",
+  },
+  EURUSD_12H_FINAL_APP_V2: {
+    kind: "direction",
+    accuracy: 0.815,
+    n: 27,
+    label: "Model direction accuracy",
+  },
+  GBPUSD_12H_FINAL_APP_V2: {
+    kind: "direction",
+    accuracy: 1.0,
+    n: 5,
+    label: "Model direction accuracy",
+  },
+  USDJPY_12H_FINAL_APP_V2: {
+    kind: "direction",
+    accuracy: 0.676,
+    n: 37,
+    label: "Model direction accuracy",
+  },
+  EURUSD_12H_MLP_WIDE: {
+    kind: "direction",
+    accuracy: 0.81,
+    n: 21,
+    label: "Model direction accuracy",
+  },
+  EURUSD_12H_MLP_CONS: {
+    kind: "direction",
+    accuracy: 0.70,
+    n: 20,
+    label: "Model direction accuracy",
+  },
+  USDJPY_12H_LEGACY: {
+    kind: "direction",
+    accuracy: 0.818,
+    n: 11,
+    label: "High-confidence direction accuracy",
+  },
+  GBPJPY_12H_LEGACY: {
+    kind: "range",
+    accuracy: 0.933,
+    n: 164,
+    label: "Range-path accuracy",
+  },
+  AUDUSD_12H_MLP_WIDE: {
+    kind: "range",
+    accuracy: 0.771,
+    n: 35,
+    label: "Range-path accuracy",
+  },
+  USDJPY_12H_MLP_WIDE: {
+    kind: "range",
+    accuracy: 0.857,
+    n: 35,
+    label: "Range-path accuracy",
+  },
+};
+
+const PROMOTED_CATALOG_KEYS = new Set(Object.keys(PROMOTED_MODEL_STATS));
+
+function promotedModelStat(modelKey?: string | null) {
+  const key = String(modelKey ?? "").trim();
+  return key ? PROMOTED_MODEL_STATS[key] ?? null : null;
+}
+
+function promotedAccuracyValue(modelKey?: string | null) {
+  const stat = promotedModelStat(modelKey);
+
+  if (!stat) {
+    return null;
+  }
+
+  const label = stat.kind === "range" ? "range" : "direction";
+  return `${(stat.accuracy * 100).toFixed(1)}% ${label} · n=${stat.n}`;
+}
+
+function shouldShowInModelCatalog(item: ModelCatalogItem) {
+  const key = String(item.model_key ?? "").trim();
+  const mode = String(item.mode ?? "").toLowerCase();
+
+  if (mode === "disabled" || mode === "retired") {
+    return false;
+  }
+
+  return PROMOTED_CATALOG_KEYS.has(key);
+}
+
 function makeLockedPreview(
   item: ModelPreview
 ): CardAsset {
@@ -195,6 +339,20 @@ function pct(
   }
 
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+function pctAlreadyPercent(
+  value?: number | null,
+  digits = 1
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return "N/A";
+  }
+
+  return `${value.toFixed(digits)}%`;
 }
 
 
@@ -339,6 +497,31 @@ function normalizeAsset(
   );
   const validation = MODEL_VALIDATION_STATS[baseKey];
 
+  const liveDirectionAccuracy =
+    typeof item.live_direction_accuracy === "number"
+      ? item.live_direction_accuracy
+      : null;
+
+  const liveDirectionN =
+    typeof item.live_direction_n === "number"
+      ? item.live_direction_n
+      : 0;
+
+  const liveRangePathAccuracy =
+    typeof item.live_range_path_accuracy === "number"
+      ? item.live_range_path_accuracy
+      : null;
+
+  const liveRangePathN =
+    typeof item.live_range_path_n === "number"
+      ? item.live_range_path_n
+      : 0;
+
+  const backendLocked =
+    item.current_prediction_locked === true ||
+    item.locked === true ||
+    item.teaser_only === true;
+
   const isFinalAppV2 =
     modelFamily === "clean_pro_final_app_v2" ||
     item.source === "final_app_v2";
@@ -366,8 +549,12 @@ function normalizeAsset(
     typeof summary?.direction_accuracy ===
       "number";
 
+  const promotedStat = promotedModelStat(item.model_key);
+
   const liveAccuracy =
-    useMlpValidation
+    promotedStat?.kind === "direction"
+      ? promotedStat.accuracy
+      : useMlpValidation
       ? item.validation_direction_accuracy ?? null
       : useValidationAccuracy
       ? validation?.accuracy ?? null
@@ -376,7 +563,9 @@ function normalizeAsset(
       : validation?.accuracy ?? null;
 
   const accuracyN =
-    useMlpValidation
+    promotedStat?.kind === "direction"
+      ? promotedStat.n
+      : useMlpValidation
       ? item.validation_trades ?? 0
       : useValidationAccuracy
       ? validation?.n ?? 0
@@ -385,7 +574,11 @@ function normalizeAsset(
       : validation?.n ?? 0;
 
   const accuracySource =
-    useValidationAccuracy
+    promotedStat?.kind === "direction"
+      ? promotedStat.label.toLowerCase().includes("live")
+        ? "live"
+        : "validation"
+      : useValidationAccuracy
       ? "validation"
       : hasLiveAccuracy
       ? "live"
@@ -393,12 +586,25 @@ function normalizeAsset(
       ? "validation"
       : "collecting";
 
+  const promotedRangePathAccuracy =
+    promotedStat?.kind === "range"
+      ? promotedStat.accuracy * 100
+      : item.live_range_path_accuracy ?? null;
+
+  const promotedRangePathN =
+    promotedStat?.kind === "range"
+      ? promotedStat.n
+      : item.live_range_path_n ?? null;
+
   return {
     key,
     routeSymbol,
     sortKey: baseKey,
     symbol: `${symbol} ${horizonH}h`,
-    display: item.display ?? symbol,
+    display:
+      item.display_name ??
+      item.display ??
+      symbol,
     horizonH,
     bias: item.bias ?? "Neutral",
     confidence: getConfidence(item),
@@ -422,14 +628,16 @@ function normalizeAsset(
     modelLabel: item.model_label,
     modelSource: item.model_source,
     tier,
-    locked: isModelLocked(
-      symbol,
-      horizonH,
-      userIsPro,
-      modelId,
-      modelFamily,
-      item.model_group
-    ),
+    locked:
+      backendLocked ||
+      isModelLocked(
+        symbol,
+        horizonH,
+        userIsPro,
+        modelId,
+        modelFamily,
+        item.model_group
+      ),
     liveAccuracy,
     accuracyN,
     accuracySource,
@@ -453,6 +661,26 @@ function normalizeAsset(
     validationProfitFactor: item.validation_profit_factor ?? null,
     validationMaxDrawdownPips: item.validation_max_drawdown_pips ?? null,
     validationWinRate: item.validation_win_rate ?? null,
+
+    modelKey: item.model_key,
+    displayName: item.display_name,
+    shortName: item.short_name,
+    accessTierRaw: item.access_tier,
+    modelType: item.model_type,
+    modelMode: item.model_mode,
+    modelPurpose: item.model_purpose,
+    headlineMetric: item.headline_metric,
+    publicNote: item.public_note,
+    liveEvaluatedN: item.live_evaluated_n ?? null,
+    livePendingN: item.live_pending_n ?? null,
+    liveDirectionN: item.live_direction_n ?? null,
+    liveDirectionHits: item.live_direction_hits ?? null,
+    liveDirectionAccuracy: item.live_direction_accuracy ?? null,
+    liveRangeCloseN: item.live_range_close_n ?? null,
+    liveRangeCloseAccuracy: item.live_range_close_accuracy ?? null,
+    liveRangePathN: promotedRangePathN,
+    liveRangePathAccuracy: promotedRangePathAccuracy,
+    currentPredictionLocked: backendLocked,
   };
 }
 
@@ -610,13 +838,25 @@ function AssetCard({
     );
   }
 
+  const isRangeModel =
+    item.modelType === "range" ||
+    item.modelMode === "range_only" ||
+    item.bias === "Range Only";
+
   const accuracyLabel =
-    item.accuracySource === "live"
+    isRangeModel
+      ? "Range-path accuracy"
+      : item.accuracySource === "live"
       ? "Live direction accuracy"
       : "Model direction accuracy";
 
   const accuracyValue =
-    item.liveAccuracy === null
+    isRangeModel
+      ? item.liveRangePathAccuracy !== null &&
+        item.liveRangePathAccuracy !== undefined
+        ? `${pctAlreadyPercent(item.liveRangePathAccuracy, 1)} · n=${item.liveRangePathN ?? 0}`
+        : item.headlineMetric ?? "Collecting"
+      : item.liveAccuracy === null
       ? "Collecting"
       : `${pct(item.liveAccuracy, 1)} · n=${item.accuracyN}`;
 
@@ -633,11 +873,11 @@ function AssetCard({
       <View className="flex-row items-start justify-between">
         <View className="flex-1 pr-3">
           <Text className="text-2xl font-black text-white">
-            {item.symbol}
+            {item.displayName ?? item.display}
           </Text>
 
           <Text className="mt-1 text-sm text-zinc-500">
-            {item.display} · {item.modelFamily}
+            {item.symbol} · {item.modelType ?? "model"}
           </Text>
         </View>
 
@@ -1008,6 +1248,157 @@ function CurrencyRow({
   );
 }
 
+
+function ModelCatalogTable({
+  items,
+  isPro,
+}: {
+  items: ModelCatalogItem[];
+  isPro: boolean;
+}) {
+  if (!items.length) {
+    return null;
+  }
+
+  function accessLabel(item: ModelCatalogItem) {
+    return String(item.access_tier ?? "pro").toLowerCase() === "free"
+      ? "FREE"
+      : "PRO";
+  }
+
+  function typeLabel(item: ModelCatalogItem) {
+    const type = String(item.model_type ?? "direction").toLowerCase();
+
+    if (type === "range") {
+      return "Range";
+    }
+
+    if (type === "monitoring") {
+      return "Monitoring";
+    }
+
+    return "Direction";
+  }
+
+  function accuracyText(item: ModelCatalogItem) {
+    const promoted = promotedAccuracyValue(item.model_key);
+
+    if (promoted) {
+      return promoted;
+    }
+
+    return item.headline_metric || "Collecting";
+  }
+
+  function currentText(item: ModelCatalogItem) {
+    const isFree = String(item.access_tier ?? "").toLowerCase() === "free";
+
+    if (isFree || isPro) {
+      if (item.current_bias && item.current_bias !== "Locked") {
+        return String(item.current_bias);
+      }
+
+      if (item.active_prediction_visible) {
+        return "Visible";
+      }
+
+      return "Monitoring";
+    }
+
+    return "Locked";
+  }
+
+  return (
+    <View className="mb-6">
+      <SectionTitle
+        kicker="Model board"
+        title="All live models before the cards"
+        subtitle="Free users can see the promoted model set, what each model is designed to predict and its clean model-history performance. Current Pro predictions remain locked."
+      />
+
+      <View className="gap-3">
+        {items.map((item) => {
+          const isFree = String(item.access_tier ?? "").toLowerCase() === "free";
+          const locked = !isFree && !isPro;
+
+          return (
+            <Pressable
+              key={item.model_key}
+              onPress={() => {
+                if (locked) {
+                  router.push("/pricing" as never);
+                }
+              }}
+              className={`rounded-3xl border p-4 active:opacity-70 ${
+                locked
+                  ? "border-violet-500/30 bg-violet-500/10"
+                  : "border-zinc-800 bg-zinc-950"
+              }`}
+            >
+              <View className="flex-row items-start justify-between gap-3">
+                <View className="flex-1">
+                  <Text className="text-lg font-black text-white">
+                    {item.display_name || item.model_key}
+                  </Text>
+
+                  <Text className="mt-1 text-xs text-zinc-500">
+                    {item.asset} {item.horizon_h}h · {typeLabel(item)}
+                  </Text>
+                </View>
+
+                <View className="items-end gap-2">
+                  <View
+                    className={`rounded-full border px-3 py-1 ${
+                      isFree
+                        ? "border-emerald-500/40 bg-emerald-500/10"
+                        : "border-violet-500/40 bg-violet-500/10"
+                    }`}
+                  >
+                    <Text
+                      className={`text-[10px] font-black ${
+                        isFree ? "text-emerald-300" : "text-violet-300"
+                      }`}
+                    >
+                      {accessLabel(item)}
+                    </Text>
+                  </View>
+
+                  <Text
+                    className={`text-xs font-black ${
+                      locked ? "text-violet-300" : "text-emerald-300"
+                    }`}
+                  >
+                    {currentText(item)}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-3 flex-row gap-2">
+                <SmallMetric label="Model type" value={typeLabel(item)} />
+                <SmallMetric
+                  label="Live performance"
+                  value={accuracyText(item)}
+                  valueClassName="text-cyan-300"
+                />
+              </View>
+
+              <Text className="mt-3 text-sm leading-6 text-zinc-400">
+                {item.purpose ?? item.public_note ?? "Live model tracked by AI Market Expert."}
+              </Text>
+
+              {locked ? (
+                <Text className="mt-3 text-xs font-black uppercase tracking-[2px] text-violet-200">
+                  Current Pro prediction locked →
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function PricingPreview() {
   return (
     <View className="mb-6">
@@ -1251,6 +1642,20 @@ export default function HomeScreen() {
       performanceMap,
       isPro,
     ]);
+
+  const modelCatalog =
+    useMemo(
+      () =>
+        (
+          data?.model_catalog ??
+          data?.modelCatalog ??
+          []
+        ).filter(shouldShowInModelCatalog),
+      [
+        data?.model_catalog,
+        data?.modelCatalog,
+      ]
+    );
 
   const modelCounts = useMemo(
     () => ({
@@ -1528,6 +1933,11 @@ export default function HomeScreen() {
             ) : null}
           </Card>
         ) : null}
+
+        <ModelCatalogTable
+          items={modelCatalog}
+          isPro={isPro}
+        />
 
         <SectionTitle
           kicker="Predictions"

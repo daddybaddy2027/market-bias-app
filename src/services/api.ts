@@ -4,6 +4,7 @@ export type Bias =
   | "Bullish"
   | "Bearish"
   | "Neutral"
+  | "Range"
   | "Range Only";
 
 export type MarketDriver = {
@@ -54,9 +55,33 @@ export type ApiAsset = {
   source?: string;
   model_family?: string;
   model_id?: string;
+  model_key?: string;
   model_group?: string;
   model_label?: string;
   model_source?: string;
+  model_key?: string;
+  display_name?: string;
+  short_name?: string;
+  access_tier?: "free" | "pro" | "retired" | string;
+  model_type?: "direction" | "range" | "monitoring" | string;
+  model_mode?: string;
+  model_purpose?: string;
+  headline_metric?: string;
+  public_note?: string;
+
+  live_evaluated_n?: number | null;
+  live_pending_n?: number | null;
+  live_direction_n?: number | null;
+  live_direction_hits?: number | null;
+  live_direction_accuracy?: number | null;
+  live_range_close_n?: number | null;
+  live_range_close_accuracy?: number | null;
+  live_range_path_n?: number | null;
+  live_range_path_accuracy?: number | null;
+
+  current_prediction_locked?: boolean;
+  teaser_only?: boolean;
+  locked?: boolean;
 
   asset: string;
   symbol?: string;
@@ -149,6 +174,38 @@ export type ApiAsset = {
   pairStrengthSpread?: number | null;
 };
 
+
+export type ModelCatalogItem = {
+  model_key: string;
+  display_name: string;
+  short_name?: string;
+  asset: string;
+  horizon_h: number;
+  access_tier: "free" | "pro" | "retired" | string;
+  model_type: "direction" | "range" | "monitoring" | string;
+  mode: string;
+  purpose?: string;
+  headline_metric?: string;
+  public_note?: string;
+  live_evaluated_n?: number | null;
+  live_pending_n?: number | null;
+  live_direction_n?: number | null;
+  live_direction_hits?: number | null;
+  live_direction_accuracy?: number | null;
+  live_range_close_n?: number | null;
+  live_range_close_accuracy?: number | null;
+  live_range_path_n?: number | null;
+  live_range_path_accuracy?: number | null;
+  current_prediction_locked?: boolean;
+  active_prediction_visible?: boolean;
+  current_bias?: string | null;
+  confidence?: number | null;
+  model_status?: string | null;
+  signal_status?: string | null;
+  prob_up?: number | null;
+  prob_used?: number | null;
+};
+
 export type MarketState = {
   generatedAt: string;
   timeBelgrade: string;
@@ -171,6 +228,8 @@ export type MarketState = {
   drivers: MarketDriver[];
   currencyStrength: CurrencyStrengthItem[];
   assets: ApiAsset[];
+  model_catalog?: ModelCatalogItem[];
+  modelCatalog?: ModelCatalogItem[];
 
   dataFreshness?: Record<string, unknown>;
   sources?: Record<string, unknown>;
@@ -215,6 +274,7 @@ export type PerformanceHistoryRow = {
   horizon_h: number;
   model_family?: string;
   model_id?: string;
+  model_key?: string;
   model_group?: string;
 
   prediction_time_utc?: string;
@@ -280,6 +340,8 @@ type PredictionDatabaseRow = {
   horizon_h: number;
   prediction_time_utc: string;
   model_family: string;
+  model_key?: string | null;
+  model_id?: string | null;
   tier: "free" | "pro";
   bias: string | null;
   confidence: number | null;
@@ -617,6 +679,26 @@ export async function fetchMarketState(): Promise<MarketState> {
       )
         ? payload.assets
         : [],
+    model_catalog:
+      Array.isArray(
+        payload.model_catalog
+      )
+        ? payload.model_catalog
+        : Array.isArray(
+            payload.modelCatalog
+          )
+        ? payload.modelCatalog
+        : [],
+    modelCatalog:
+      Array.isArray(
+        payload.modelCatalog
+      )
+        ? payload.modelCatalog
+        : Array.isArray(
+            payload.model_catalog
+          )
+        ? payload.model_catalog
+        : [],
   };
 }
 
@@ -722,7 +804,13 @@ function mapPredictionHistoryRow(
       row.model_family,
     model_id:
       firstString(
+        row.model_id,
         payload.model_id
+      ),
+    model_key:
+      firstString(
+        row.model_key,
+        payload.model_key
       ),
     model_group:
       firstString(
@@ -932,7 +1020,9 @@ export async function fetchPerformanceHistory(
   asset: string,
   horizonH: number,
   limit = 100,
-  modelFamily?: string
+  modelFamily?: string,
+  modelKey?: string,
+  modelId?: string
 ): Promise<PerformanceHistoryRow[]> {
   const normalizedAsset =
     asset.toUpperCase();
@@ -953,6 +1043,8 @@ export async function fetchPerformanceHistory(
         "horizon_h",
         "prediction_time_utc",
         "model_family",
+        "model_key",
+        "model_id",
         "tier",
         "bias",
         "confidence",
@@ -984,6 +1076,20 @@ export async function fetchPerformanceHistory(
     query = query.eq(
       "model_family",
       modelFamily
+    );
+  }
+
+  if (modelKey) {
+    query = query.eq(
+      "model_key",
+      modelKey
+    );
+  }
+
+  if (modelId) {
+    query = query.eq(
+      "model_id",
+      modelId
     );
   }
 
