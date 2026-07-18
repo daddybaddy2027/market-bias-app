@@ -1,0 +1,1 @@
+Validates the restored macro-first dashboard and model projection experience.
