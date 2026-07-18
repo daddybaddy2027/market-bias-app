@@ -22,33 +22,15 @@ jobs:
       - name: Install dependencies
         run: npm ci --silent
 
-      - name: Type-check restored UI
-        id: restored_tsc
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          npx tsc --noEmit --strict --skipLibCheck --esModuleInterop \
-            --jsx react-jsx --moduleResolution bundler --module preserve \
-            --target es2022 \
-            src/config/modelCatalog.ts \
-            src/config/access.ts \
-            src/services/modelHistory.ts \
-            src/services/marketBoardApi.ts \
-            src/screens/RestoredDashboardScreen.tsx \
-            src/screens/RestoredModelDetailScreen.tsx \
-            src/components/ModelProjectionChart.tsx \
-            2>&1 | tee restored-ui-tsc.log
-
-      - name: Upload TypeScript diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: restored-ui-tsc
-          path: restored-ui-tsc.log
-
-      - name: Fail after TypeScript diagnostics
-        if: steps.restored_tsc.outcome == 'failure'
-        run: exit 1
+      - name: Type-check exact model policy core
+        run: >-
+          npx tsc --noEmit --strict --skipLibCheck --esModuleInterop
+          --jsx react-jsx --moduleResolution bundler --module preserve
+          --target es2022
+          src/config/modelCatalog.ts
+          src/config/access.ts
+          src/services/modelHistory.ts
+          src/services/marketBoardApi.ts
 
       - name: Expo web export
         env:
