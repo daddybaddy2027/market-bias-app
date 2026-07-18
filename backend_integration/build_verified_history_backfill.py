@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import argparse
 import json
 
@@ -13,6 +13,9 @@ LIVE_OUT_DIR = BASE_DIR / "live_outputs"
 DEFAULT_INPUT = LIVE_OUT_DIR / "live_performance_full_report.csv"
 DEFAULT_OUTPUT = LIVE_OUT_DIR / "verified_history_backfill.csv"
 DEFAULT_SUMMARY = LIVE_OUT_DIR / "verified_history_summary.json"
+
+SAMPLE_START_UTC = pd.Timestamp("2026-07-13 00:00:00", tz="UTC")
+SAMPLE_END_UTC = pd.Timestamp("2026-07-16 00:00:00", tz="UTC")
 
 SPECS = {
     "EURUSD_3H_PROD_V1": {
@@ -53,8 +56,20 @@ def choose_model_key(frame: pd.DataFrame) -> pd.Series:
     horizon = pd.to_numeric(frame.get("horizon_h", 0), errors="coerce").fillna(0).astype(int)
 
     out = model_key.copy()
-    prod_mask = (asset == "EURUSD") & (horizon == 3) & ((family == "prod_v1") | (source == "prod_v1") | model_id.str.contains("PROD_V1"))
-    final_mask = (asset == "EURUSD") & (horizon == 12) & ((family == "clean_pro_final_app_v2") | (source == "final_app_v2") | model_id.str.contains("FINAL_APP_V2"))
+    prod_mask = (
+        (asset == "EURUSD")
+        & (horizon == 3)
+        & ((family == "prod_v1") | (source == "prod_v1") | model_id.str.contains("PROD_V1"))
+    )
+    final_mask = (
+        (asset == "EURUSD")
+        & (horizon == 12)
+        & (
+            (family == "clean_pro_final_app_v2")
+            | (source == "final_app_v2")
+            | model_id.str.contains("FINAL_APP_V2")
+        )
+    )
     out.loc[prod_mask] = "EURUSD_3H_PROD_V1"
     out.loc[final_mask] = "EURUSD_12H_FINAL_APP_V2"
     return out
@@ -65,7 +80,10 @@ def direction_active(frame: pd.DataFrame) -> pd.Series:
     bias = frame.get("bias", pd.Series("", index=frame.index)).fillna("").astype(str).str.lower()
     visible = as_bool_series(frame.get("visible", pd.Series(False, index=frame.index)))
     eligible = as_bool_series(frame.get("direction_eligible", pd.Series(False, index=frame.index)))
-    return (pred_dir != 0) | bias.isin({"bullish", "bearish"}) & (visible | eligible)
+
+    has_direction = (pred_dir != 0) | bias.isin({"bullish", "bearish"})
+    is_public_signal = visible | eligible
+    return has_direction & is_public_signal
 
 
 def mark_non_overlapping(frame: pd.DataFrame, horizon_h: int) -> pd.Series:
@@ -119,10 +137,10 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
     frame["model_key"] = choose_model_key(frame)
     frame["evaluation_status"] = frame.get("evaluation_status", "evaluated").fillna("evaluated").astype(str).str.lower()
 
-    # Exact stored week requested for public display.
-    start = pd.Timestamp("2026-07-13 00:00:00", tz="UTC")
-    end = pd.Timestamp("2026-07-16 00:00:00", tz="UTC")
-    frame = frame[(frame["prediction_time_utc"] >= start) & (frame["prediction_time_utc"] < end)]
+    frame = frame[
+        (frame["prediction_time_utc"] >= SAMPLE_START_UTC)
+        & (frame["prediction_time_utc"] < SAMPLE_END_UTC)
+    ].copy()
 
     output_rows: List[pd.DataFrame] = []
     summary: Dict[str, Dict] = {}
@@ -139,7 +157,9 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
         rows = rows.sort_values("prediction_time_utc").drop_duplicates(
             subset=["prediction_time_utc", "model_key"], keep="last"
         )
-        rows["direction_hit"] = as_bool_series(rows.get("direction_hit", pd.Series(False, index=rows.index)))
+        rows["direction_hit"] = as_bool_series(
+            rows.get("direction_hit", pd.Series(False, index=rows.index))
+        )
         rows["is_non_overlapping"] = mark_non_overlapping(rows, spec["horizon_h"])
         rows["performance_source"] = "verified_live_history"
         rows["history_source"] = "verified_local_live_log"
@@ -169,12 +189,31 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
             "independent_hits": spec["expected_independent_hits"],
         }
         checks = {key: actual[key] == value for key, value in expected.items()}
-        summary[model_key] = {"actual": actual, "expected": expected, "checks": checks, "passed": all(checks.values())}
+        summary[model_key] = {
+            "actual": actual,
+            "expected": expected,
+            "checks": checks,
+            "passed": all(checks.values()),
+        }
 
         if strict and not all(checks.values()):
+            diagnostics = rows[
+                [
+                    column
+                    for column in [
+                        "prediction_time_utc",
+                        "bias",
+                        "pred_dir",
+                        "visible",
+                        "direction_eligible",
+                        "direction_hit",
+                    ]
+                    if column in rows.columns
+                ]
+            ].to_dict(orient="records")
             raise RuntimeError(
                 f"Verified history mismatch for {model_key}: actual={actual}, expected={expected}. "
-                "Nothing was written because public statistics must match stored rows."
+                f"Selected rows={diagnostics}. Nothing was written because public statistics must match stored rows."
             )
 
         output_rows.append(rows)
@@ -182,7 +221,10 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
     result = pd.concat(output_rows, ignore_index=True) if output_rows else pd.DataFrame()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output_path, index=False)
-    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
     return summary
 
 
