@@ -11,6 +11,7 @@ import {
 
 import { PayPalSubscribeButton } from "../components/PayPalSubscribeButton";
 import { useAuth } from "../providers/AuthProvider";
+import { MODEL_CATALOG } from "../config/modelCatalog";
 
 function Card({
   children,
@@ -55,6 +56,8 @@ function FeatureRow({
 
 export default function PricingScreen() {
   const { isAuthenticated, isPro } = useAuth();
+  const freeModels = MODEL_CATALOG.filter((model) => model.tier === "Free");
+  const proModels = MODEL_CATALOG.filter((model) => model.tier === "Pro");
 
   return (
     <SafeAreaView
@@ -73,15 +76,13 @@ export default function PricingScreen() {
           <Text className="text-xs font-black uppercase tracking-[4px] text-violet-300">
             AI MARKET EXPERT PRO
           </Text>
-
           <Text className="mt-4 text-4xl font-black leading-tight text-white">
-            Unlock the full live model board
+            Thirteen models. Two Free. Eleven Pro.
           </Text>
-
           <Text className="mt-4 text-base leading-7 text-zinc-400">
-            Free includes the EURUSD 3h model and core market context. Pro unlocks
-            the full model board, current Pro predictions, projected zones, model
-            pages and deeper verified history.
+            Free includes the verified EURUSD 3h production model and the new USDJPY
+            6h V3 model. Pro unlocks every other current prediction, probability,
+            forecast zone and exact model history.
           </Text>
         </View>
 
@@ -90,27 +91,21 @@ export default function PricingScreen() {
             <View className="flex-1 pr-4">
               <Text className="text-2xl font-black text-white">Free</Text>
               <Text className="mt-1 text-sm text-zinc-400">
-                Core market intelligence
+                {freeModels.length} live model views plus core market context
               </Text>
             </View>
-
             <View className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1">
               <Text className="text-xs font-black text-emerald-300">€0</Text>
             </View>
           </View>
 
-          <FeatureRow>EURUSD 3h live model</FeatureRow>
-          <FeatureRow>Core macro regime and market state</FeatureRow>
-          <FeatureRow>Currency strength and selected cross-asset drivers</FeatureRow>
-          <FeatureRow>Model board preview with locked Pro models</FeatureRow>
-          <FeatureRow>Selected public model history and accuracy</FeatureRow>
-
-          <FeatureRow included={false}>
-            Current Pro model bias, confidence and projected zones
-          </FeatureRow>
-          <FeatureRow included={false}>
-            Full Pro prediction history and model detail pages
-          </FeatureRow>
+          <FeatureRow>EURUSD 3h verified production direction model</FeatureRow>
+          <FeatureRow>USDJPY 6h V3 direction model under live verification</FeatureRow>
+          <FeatureRow>Core macro regime, market state and currency strength</FeatureRow>
+          <FeatureRow>Public evaluation and verified-history statistics</FeatureRow>
+          <FeatureRow>Locked preview of all eleven Pro models</FeatureRow>
+          <FeatureRow included={false}>Current Pro bias, probability and forecast zones</FeatureRow>
+          <FeatureRow included={false}>Full Pro prediction history and independent-sample filter</FeatureRow>
         </Card>
 
         <Card className="mb-5 border-violet-500/40 bg-violet-500/10">
@@ -118,28 +113,24 @@ export default function PricingScreen() {
             <View className="flex-1 pr-4">
               <Text className="text-2xl font-black text-white">Pro</Text>
               <Text className="mt-1 text-sm text-zinc-400">
-                Full market model access
+                Full {MODEL_CATALOG.length}-model board
               </Text>
             </View>
-
             <View className="items-end">
               <View className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1">
                 <Text className="text-xs font-black text-violet-200">MONTHLY</Text>
               </View>
-
               <Text className="mt-3 text-3xl font-black text-white">€24.99</Text>
-              <Text className="mt-1 text-xs font-bold text-zinc-400">
-                per month
-              </Text>
+              <Text className="mt-1 text-xs font-bold text-zinc-400">per month</Text>
             </View>
           </View>
 
-          <FeatureRow>Full 12-model live board</FeatureRow>
-          <FeatureRow>All current Pro model predictions</FeatureRow>
+          <FeatureRow>All {MODEL_CATALOG.length} model cards, including {proModels.length} Pro models</FeatureRow>
           <FeatureRow>Current bias, probability, confidence and forecast zones</FeatureRow>
-          <FeatureRow>Range-only models with range coverage and path tracking</FeatureRow>
-          <FeatureRow>Full Pro model detail pages and prediction history</FeatureRow>
-          <FeatureRow>Trading-model pips, win-rate, profit factor and drawdown context</FeatureRow>
+          <FeatureRow>Seven new V3 cross-asset models with clearly labelled evaluation metrics</FeatureRow>
+          <FeatureRow>Verified live history for EURUSD 3h and EURUSD 12h Final V2</FeatureRow>
+          <FeatureRow>Independent non-overlapping history view</FeatureRow>
+          <FeatureRow>Range models with path coverage and outcome tracking</FeatureRow>
           <FeatureRow>Automatic activation after PayPal subscription approval</FeatureRow>
 
           <View className="mt-6">
@@ -160,23 +151,21 @@ export default function PricingScreen() {
           {isPro ? (
             <Text className="mt-4 text-sm leading-6 text-emerald-300">
               Your account already has Pro access. Refresh the dashboard if a card
-              still looks locked.
+              still appears locked.
             </Text>
           ) : null}
         </Card>
 
         <Card>
-          <Text className="text-xl font-black text-white">Why subscription?</Text>
+          <Text className="text-xl font-black text-white">Performance labels</Text>
           <Text className="mt-3 text-sm leading-6 text-zinc-400">
-            The platform continuously downloads market data, calculates cross-asset
-            features, runs several probabilistic models and verifies forecasts
-            against later prices. Pro funds the infrastructure and model development,
-            not a magic certainty machine, because those belong in advertisements
-            and legal exhibits.
+            Verified live accuracy comes from stored real predictions. Evaluation
+            accuracy comes from purged out-of-sample walk-forward testing. New V3
+            models keep both numbers separate while live outcomes accumulate. A
+            model does not become live merely because its backtest wore a nice suit.
           </Text>
         </Card>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
