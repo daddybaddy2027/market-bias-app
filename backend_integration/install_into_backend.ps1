@@ -17,11 +17,14 @@ Copy-Item -Path (Join-Path $SourceDir "*") -Destination $TargetDir -Recurse -For
 Copy-Item -Path (Join-Path $TargetDir "live_model_policy.json") -Destination (Join-Path $BackendRoot "live_model_policy.json") -Force
 
 python -u (Join-Path $TargetDir "patch_scheduler.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Scheduler patch failed with exit code $LASTEXITCODE"
+}
 
-Write-Host "" 
+Write-Host ""
 Write-Host "Backend integration installed." -ForegroundColor Green
 Write-Host "Test command:" -ForegroundColor Yellow
 Write-Host "python -u $TargetDir\merge_13_model_board.py"
-Write-Host "" 
+Write-Host ""
 Write-Host "Full upload command:" -ForegroundColor Yellow
 Write-Host "python -u $TargetDir\13_upload_to_supabase.py"
