@@ -1,107 +1,60 @@
-export type AccessTier =
-  | "Free"
-  | "Pro";
+import {
+  MODEL_CATALOG,
+  assetModelCandidates,
+  findModelDefinition,
+  modelSlug,
+  type AccessTier,
+} from "./modelCatalog";
 
-/*
-  Launch mode:
-  - Free users keep 4 useful model views.
-  - Pro users unlock the complete current model set.
-  - Pro cards can still show historical performance teasers.
-  - Current bias / expected move / confidence / probability / status are locked.
-*/
-export const ENABLE_PRO_LOCKS =
-  true;
+export type { AccessTier };
 
-export const PUBLIC_PREVIEW_MODE =
-  false;
+export const ENABLE_PRO_LOCKS = true;
+export const PUBLIC_PREVIEW_MODE = false;
+export const PUBLIC_PREVIEW_PERFORMANCE = true;
 
-export const PUBLIC_PREVIEW_PERFORMANCE =
-  true;
+export const FREE_MODEL_KEYS = new Set(
+  MODEL_CATALOG
+    .filter((model) => model.tier === "Free")
+    .flatMap((model) => [model.modelKey, ...(model.aliases ?? [])])
+    .map(modelSlug)
+);
 
-export const FREE_MODEL_KEYS =
-  new Set([
-    "EURUSD-3",
-    "EURUSD-6",
-    "USDJPY-6",
-    "AUDUSD-12-AUDUSD_12H_MLP_G0_CONS_C6",
-  ]);
+export const PRO_MODEL_KEYS = new Set(
+  MODEL_CATALOG
+    .filter((model) => model.tier === "Pro")
+    .flatMap((model) => [model.modelKey, ...(model.aliases ?? [])])
+    .map(modelSlug)
+);
 
-export const PRO_MODEL_KEYS =
-  new Set([
-    "AUDUSD-12",
-    "AUDUSD-12-AUDUSD_12H_MLP_G0_WIDE_C6",
-    "EURUSD-12",
-    "EURUSD-12-EURUSD_12H_MLP_G2_CONS_C6",
-    "EURUSD-12-EURUSD_12H_MLP_G1_WIDE_C6",
-    "GBPUSD-12",
-    "USDJPY-12",
-    "USDJPY-12-USDJPY_12H_MLP_G1_WIDE_C6",
-    "GBPJPY-12",
-  ]);
-
-export const HIDDEN_PUBLIC_SYMBOLS =
-  new Set<string>([]);
-
-export function modelSlug(
-  value?: string | null
-) {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]+/g, "_");
-}
+export const HIDDEN_PUBLIC_SYMBOLS = new Set<string>();
 
 export function buildModelKey(
   symbol: string,
   horizonH: number,
   modelId?: string | null
 ) {
-  const base =
-    `${symbol.toUpperCase()}-${horizonH}`;
-
-  const slug =
-    modelSlug(modelId);
-
-  return slug
-    ? `${base}-${slug}`
-    : base;
+  const base = `${symbol.toUpperCase()}-${horizonH}`;
+  const slug = modelSlug(modelId);
+  return slug ? `${base}-${slug}` : base;
 }
 
-function candidateKeys(
+function candidates(
   symbol: string,
   horizonH: number,
   modelId?: string | null,
   modelFamily?: string | null,
   modelGroup?: string | null
 ) {
-  const base =
-    buildModelKey(
-      symbol,
-      horizonH
-    );
+  const pseudoAsset = {
+    asset: symbol.toUpperCase(),
+    horizon_h: horizonH,
+    model_id: modelId,
+    model_family: modelFamily,
+    model_group: modelGroup,
+    source: modelFamily,
+  };
 
-  return [
-    buildModelKey(
-      symbol,
-      horizonH,
-      modelId
-    ),
-    buildModelKey(
-      symbol,
-      horizonH,
-      modelFamily
-    ),
-    buildModelKey(
-      symbol,
-      horizonH,
-      modelGroup
-    ),
-    base,
-  ].filter(
-    (value, index, array) =>
-      value &&
-      array.indexOf(value) === index
-  );
+  return assetModelCandidates(pseudoAsset);
 }
 
 export function getModelTier(
@@ -111,32 +64,26 @@ export function getModelTier(
   modelFamily?: string | null,
   modelGroup?: string | null
 ): AccessTier {
-  const keys =
-    candidateKeys(
-      symbol,
-      horizonH,
-      modelId,
-      modelFamily,
-      modelGroup
-    );
+  const keys = candidates(
+    symbol,
+    horizonH,
+    modelId,
+    modelFamily,
+    modelGroup
+  );
 
-  if (
-    keys.some((key) =>
-      FREE_MODEL_KEYS.has(key)
-    )
-  ) {
-    return "Free";
+  for (const key of keys) {
+    const model = findModelDefinition(key);
+    if (model) return model.tier;
   }
 
-  if (
-    keys.some((key) =>
-      PRO_MODEL_KEYS.has(key)
-    )
-  ) {
-    return "Pro";
-  }
+  // Exact asset/horizon fallback is used only when there is one catalog model
+  // for that pair. It deliberately refuses ambiguous cases such as EURUSD 3h.
+  const samePair = MODEL_CATALOG.filter(
+    (model) => model.asset === symbol.toUpperCase() && model.horizonH === horizonH
+  );
 
-  return "Pro";
+  return samePair.length === 1 ? samePair[0].tier : "Pro";
 }
 
 export function isModelPubliclyAllowed(
@@ -146,30 +93,21 @@ export function isModelPubliclyAllowed(
   modelFamily?: string | null,
   modelGroup?: string | null
 ) {
-  const normalized =
-    symbol.toUpperCase();
+  const normalized = symbol.toUpperCase();
+  if (HIDDEN_PUBLIC_SYMBOLS.has(normalized)) return false;
 
-  if (
-    HIDDEN_PUBLIC_SYMBOLS.has(
-      normalized
-    )
-  ) {
-    return false;
-  }
+  const keys = candidates(
+    normalized,
+    horizonH,
+    modelId,
+    modelFamily,
+    modelGroup
+  );
 
-  const keys =
-    candidateKeys(
-      normalized,
-      horizonH,
-      modelId,
-      modelFamily,
-      modelGroup
-    );
+  if (keys.some((key) => Boolean(findModelDefinition(key)))) return true;
 
-  return keys.some(
-    (key) =>
-      FREE_MODEL_KEYS.has(key) ||
-      PRO_MODEL_KEYS.has(key)
+  return MODEL_CATALOG.some(
+    (model) => model.asset === normalized && model.horizonH === horizonH
   );
 }
 
@@ -181,9 +119,7 @@ export function isModelLocked(
   modelFamily?: string | null,
   modelGroup?: string | null
 ) {
-  if (PUBLIC_PREVIEW_MODE) {
-    return false;
-  }
+  if (PUBLIC_PREVIEW_MODE) return false;
 
   return (
     ENABLE_PRO_LOCKS &&
@@ -206,9 +142,7 @@ export function canViewModelPerformance(
   modelFamily?: string | null,
   modelGroup?: string | null
 ) {
-  if (PUBLIC_PREVIEW_PERFORMANCE) {
-    return true;
-  }
+  if (PUBLIC_PREVIEW_PERFORMANCE) return true;
 
   return (
     userIsPro ||
@@ -222,18 +156,12 @@ export function canViewModelPerformance(
   );
 }
 
-export function isFreeDriver(
-  key?: string,
-  title?: string
-) {
-  if (PUBLIC_PREVIEW_MODE) {
-    return true;
-  }
+export function isFreeDriver(key?: string, title?: string) {
+  if (PUBLIC_PREVIEW_MODE) return true;
 
-  const text =
-    `${key ?? ""} ${title ?? ""}`
-      .toLowerCase()
-      .replace(/[_-]/g, " ");
+  const text = `${key ?? ""} ${title ?? ""}`
+    .toLowerCase()
+    .replace(/[_-]/g, " ");
 
   return (
     text.includes("equities") ||

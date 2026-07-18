@@ -1,0 +1,132 @@
+{
+  "EURUSD_3H_PROD_V1": {
+    "display_name": "EURUSD 3h Production Direction",
+    "short_name": "EURUSD 3h",
+    "access_tier": "free",
+    "model_type": "direction",
+    "mode": "direction_active",
+    "purpose": "Short-horizon directional model with verified live history.",
+    "headline_metric": "71.4% verified live accuracy · n=21",
+    "public_note": "Independent non-overlapping sample: 80.0% · 8/10."
+  },
+  "USDJPY_6H_V3_STRICT": {
+    "display_name": "USDJPY 6h V3 Direction",
+    "short_name": "USDJPY 6h",
+    "access_tier": "free",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "Cross-asset USDJPY direction model under live verification.",
+    "headline_metric": "75.6% walk-forward evaluation · n=238",
+    "public_note": "Evaluation result, not live accuracy. Live outcomes are being collected."
+  },
+  "USDJPY_12H_MLP_WIDE": {
+    "display_name": "USDJPY 12h MLP Range",
+    "short_name": "USDJPY 12h Range",
+    "access_tier": "pro",
+    "model_type": "range",
+    "mode": "range_only",
+    "purpose": "Wide probabilistic range model for USDJPY.",
+    "headline_metric": "85.7% range-path accuracy · n=35",
+    "public_note": "Stored model range-history sample."
+  },
+  "GBPJPY_12H_LEGACY": {
+    "display_name": "GBPJPY 12h Broad Range",
+    "short_name": "GBPJPY 12h Range",
+    "access_tier": "pro",
+    "model_type": "range",
+    "mode": "range_only",
+    "purpose": "Broad 12-hour range model with long verified path history.",
+    "headline_metric": "93.3% range-path accuracy · n=164",
+    "public_note": "Verified stored range-path history."
+  },
+  "EURUSD_12H_FINAL_APP_V2": {
+    "display_name": "EURUSD 12h Final V2",
+    "short_name": "EURUSD 12h V2",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "direction_active",
+    "purpose": "Selective EURUSD 12-hour direction model.",
+    "headline_metric": "100% verified live accuracy · 6/6",
+    "public_note": "Average signed result +33.4 pips. Independent sample 2/2. Small verified sample."
+  },
+  "EURUSD_12H_MLP_COMBINED": {
+    "display_name": "EURUSD 12h MLP Wide / Conservative",
+    "short_name": "EURUSD 12h MLP",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "candidate",
+    "purpose": "Two complementary MLP variants shown as one model family.",
+    "headline_metric": "Wide 81.0% · n=21 | Conservative 70.0% · n=20",
+    "public_note": "Variants remain separately tracked in prediction history."
+  },
+  "GBPUSD_12H_FINAL_APP_V2": {
+    "display_name": "GBPUSD 12h Final V2",
+    "short_name": "GBPUSD 12h",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "candidate",
+    "purpose": "Selective GBPUSD 12-hour direction model.",
+    "headline_metric": "100% evaluation accuracy · n=5",
+    "public_note": "Very small evaluation sample. Live verification remains decisive."
+  },
+  "EURUSD_3H_V3_STRICT": {
+    "display_name": "EURUSD 3h V3 Direction",
+    "short_name": "EURUSD 3h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "V3 ensemble with separate long and short experts.",
+    "headline_metric": "74.7% walk-forward evaluation · n=293",
+    "public_note": "Evaluation expectancy +13.82 pips, PF 4.48. Not live accuracy."
+  },
+  "EURUSD_6H_V3_STRICT": {
+    "display_name": "EURUSD 6h V3 Direction",
+    "short_name": "EURUSD 6h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "Medium-horizon EURUSD cross-asset direction model.",
+    "headline_metric": "72.4% walk-forward evaluation · n=76",
+    "public_note": "Evaluation expectancy +18.85 pips, PF 4.24. Not live accuracy."
+  },
+  "GBPUSD_6H_V3_STRICT": {
+    "display_name": "GBPUSD 6h V3 Direction",
+    "short_name": "GBPUSD 6h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "Selective GBPUSD V3 direction model.",
+    "headline_metric": "76.9% walk-forward evaluation · n=52",
+    "public_note": "Evaluation expectancy +29.78 pips, PF 5.57. Smaller sample."
+  },
+  "USDJPY_12H_V3_STRICT": {
+    "display_name": "USDJPY 12h V3 Direction",
+    "short_name": "USDJPY 12h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "Longer-horizon USDJPY V3 direction model.",
+    "headline_metric": "78.7% walk-forward evaluation · n=75",
+    "public_note": "Evaluation expectancy +37.90 pips, PF 6.39. Not live accuracy."
+  },
+  "AUDUSD_6H_V3_STRICT": {
+    "display_name": "AUDUSD 6h V3 Direction",
+    "short_name": "AUDUSD 6h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "AUDUSD V3 ensemble with balanced long and short experts.",
+    "headline_metric": "70.9% walk-forward evaluation · n=134",
+    "public_note": "Evaluation expectancy +12.28 pips, PF 3.85. Not live accuracy."
+  },
+  "XAUUSD_6H_V3_STRICT": {
+    "display_name": "XAUUSD 6h V3 Direction",
+    "short_name": "XAUUSD 6h V3",
+    "access_tier": "pro",
+    "model_type": "direction",
+    "mode": "live_verification",
+    "purpose": "Gold V3 directional model with rates and equity context.",
+    "headline_metric": "68.1% walk-forward evaluation · n=116",
+    "public_note": "Evaluation expectancy +110.33 gold-pips, PF 3.31. Gold scale differs from FX."
+  }
+}
