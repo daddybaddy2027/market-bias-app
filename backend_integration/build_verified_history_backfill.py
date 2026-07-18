@@ -14,13 +14,14 @@ DEFAULT_INPUT = LIVE_OUT_DIR / "live_performance_full_report.csv"
 DEFAULT_OUTPUT = LIVE_OUT_DIR / "verified_history_backfill.csv"
 DEFAULT_SUMMARY = LIVE_OUT_DIR / "verified_history_summary.json"
 
-SAMPLE_START_UTC = pd.Timestamp("2026-07-13 00:00:00", tz="UTC")
-SAMPLE_END_UTC = pd.Timestamp("2026-07-16 00:00:00", tz="UTC")
-
 SPECS = {
     "EURUSD_3H_PROD_V1": {
         "asset": "EURUSD",
         "horizon_h": 3,
+        "sample_start_utc": "2026-07-13 00:00:00+00:00",
+        # Snapshot was recorded before the later 14:00 UTC signal was added.
+        "sample_end_utc": "2026-07-15 14:00:00+00:00",
+        "sample_period": "2026-07-13_to_2026-07-15_1400_exclusive",
         "expected_n": 21,
         "expected_hits": 15,
         "expected_independent_n": 10,
@@ -31,6 +32,9 @@ SPECS = {
     "EURUSD_12H_FINAL_APP_V2": {
         "asset": "EURUSD",
         "horizon_h": 12,
+        "sample_start_utc": "2026-07-13 00:00:00+00:00",
+        "sample_end_utc": "2026-07-16 00:00:00+00:00",
+        "sample_period": "2026-07-13_to_2026-07-15",
         "expected_n": 6,
         "expected_hits": 6,
         "expected_independent_n": 2,
@@ -137,20 +141,20 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
     frame["model_key"] = choose_model_key(frame)
     frame["evaluation_status"] = frame.get("evaluation_status", "evaluated").fillna("evaluated").astype(str).str.lower()
 
-    frame = frame[
-        (frame["prediction_time_utc"] >= SAMPLE_START_UTC)
-        & (frame["prediction_time_utc"] < SAMPLE_END_UTC)
-    ].copy()
-
     output_rows: List[pd.DataFrame] = []
     summary: Dict[str, Dict] = {}
 
     for model_key, spec in SPECS.items():
+        sample_start = pd.Timestamp(spec["sample_start_utc"])
+        sample_end = pd.Timestamp(spec["sample_end_utc"])
+
         rows = frame[
             (frame["model_key"] == model_key)
             & (frame.get("asset", "").astype(str).str.upper() == spec["asset"])
             & (pd.to_numeric(frame.get("horizon_h", 0), errors="coerce") == spec["horizon_h"])
             & (frame["evaluation_status"] == "evaluated")
+            & (frame["prediction_time_utc"] >= sample_start)
+            & (frame["prediction_time_utc"] < sample_end)
         ].copy()
 
         rows = rows[direction_active(rows)].copy()
@@ -163,7 +167,9 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
         rows["is_non_overlapping"] = mark_non_overlapping(rows, spec["horizon_h"])
         rows["performance_source"] = "verified_live_history"
         rows["history_source"] = "verified_local_live_log"
-        rows["sample_period"] = "2026-07-13_to_2026-07-15"
+        rows["sample_period"] = spec["sample_period"]
+        rows["verified_snapshot_start_utc"] = sample_start.isoformat()
+        rows["verified_snapshot_end_utc_exclusive"] = sample_end.isoformat()
         rows["net_pips"] = compute_signed_pips(rows, spec["asset"])
 
         n = int(len(rows))
@@ -190,6 +196,8 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
         }
         checks = {key: actual[key] == value for key, value in expected.items()}
         summary[model_key] = {
+            "snapshot_start_utc": sample_start.isoformat(),
+            "snapshot_end_utc_exclusive": sample_end.isoformat(),
             "actual": actual,
             "expected": expected,
             "checks": checks,
@@ -212,8 +220,9 @@ def build(input_path: Path, output_path: Path, summary_path: Path, strict: bool 
                 ]
             ].to_dict(orient="records")
             raise RuntimeError(
-                f"Verified history mismatch for {model_key}: actual={actual}, expected={expected}. "
-                f"Selected rows={diagnostics}. Nothing was written because public statistics must match stored rows."
+                f"Verified history mismatch for {model_key}: actual={actual}, expected={expected}, "
+                f"snapshot=[{sample_start}, {sample_end}). Selected rows={diagnostics}. "
+                "Nothing was written because public statistics must match stored rows."
             )
 
         output_rows.append(rows)
