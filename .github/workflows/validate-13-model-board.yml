@@ -1,10 +1,10 @@
-name: Validate 13-model board
+name: Validate market intelligence app
 
 on:
   pull_request:
     branches: [main]
   push:
-    branches: [feature/13-model-live-board]
+    branches: [main, feature/13-model-live-board]
 
 jobs:
   validate:
@@ -31,6 +31,9 @@ jobs:
           src/config/access.ts
           src/services/modelHistory.ts
           src/services/marketBoardApi.ts
+          src/screens/RestoredDashboardScreen.tsx
+          src/screens/RestoredModelDetailScreen.tsx
+          src/components/ModelProjectionChart.tsx
 
       - name: Expo web export
         env:
