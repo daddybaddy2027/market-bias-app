@@ -6,6 +6,9 @@ on:
   push:
     branches: [feature/13-model-live-board]
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -36,14 +39,24 @@ jobs:
           name: typescript-diagnostics
           path: tsc-errors.txt
 
+      - name: Persist diagnostics on branch
+        if: steps.typescript.outcome == 'failure' && github.event_name == 'push'
+        run: |
+          cp tsc-errors.txt ci-tsc-errors.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci-tsc-errors.txt
+          git commit -m "chore: capture TypeScript diagnostics [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
       - name: Fail after TypeScript diagnostics
         if: steps.typescript.outcome == 'failure'
         run: exit 1
 
       - name: Expo web export
         env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
           EXPO_PUBLIC_PAYPAL_CLIENT_ID: placeholder
           EXPO_PUBLIC_PAYPAL_PRO_MONTHLY_PLAN_ID: placeholder
           EXPO_PUBLIC_SUPPORT_URL: https://example.com
