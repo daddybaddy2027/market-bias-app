@@ -1,0 +1,35 @@
+name: Validate 13-model board
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/13-model-live-board]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Expo web export
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_PAYPAL_CLIENT_ID: placeholder
+          EXPO_PUBLIC_PAYPAL_PRO_MONTHLY_PLAN_ID: placeholder
+          EXPO_PUBLIC_SUPPORT_URL: https://example.com
+        run: npx expo export --platform web
