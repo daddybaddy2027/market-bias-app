@@ -19,6 +19,21 @@ import {
   signed,
 } from "./DashboardPrimitives";
 
+const MODEL_DISPLAY_PRIORITY: Record<string, number> = {
+  EURUSD_12H_FINAL_APP_V2: 1,
+  GBPUSD_12H_FINAL_APP_V2: 2,
+  EURUSD_3H_PROD_V1: 3,
+};
+
+const DISPLAY_MODELS = [...MODEL_CATALOG].sort((left, right) => {
+  const leftPriority =
+    MODEL_DISPLAY_PRIORITY[left.modelKey] ?? 100 + left.order;
+  const rightPriority =
+    MODEL_DISPLAY_PRIORITY[right.modelKey] ?? 100 + right.order;
+
+  return leftPriority - rightPriority;
+});
+
 function ModelCard({
   model,
   asset,
@@ -213,7 +228,7 @@ export function ModelBoardSection({
         title="Live model assets"
         subtitle="The market-intelligence experience remains intact. Only the model set, access rules and verified-history labels have changed."
       />
-      {MODEL_CATALOG.map((model) => (
+      {DISPLAY_MODELS.map((model) => (
         <ModelCard
           key={model.modelKey}
           model={model}
