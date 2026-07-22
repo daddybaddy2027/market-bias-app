@@ -3,6 +3,7 @@ import {
   type ModelDefinition,
   modelSlug,
 } from "../config/modelCatalog";
+import { BUNDLED_FREE_MODEL_HISTORY } from "../data/freeModelHistory";
 
 export type ExtendedHistoryRow = {
   asset: string;
@@ -46,7 +47,11 @@ const HISTORY_COLUMNS = [
 ].join(",");
 
 function asObject(value: unknown): Record<string, any> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
     return value as Record<string, any>;
   }
 
@@ -54,7 +59,11 @@ function asObject(value: unknown): Record<string, any> {
     try {
       const parsed = JSON.parse(value);
 
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      return (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      )
         ? parsed
         : {};
     } catch {
@@ -66,14 +75,22 @@ function asObject(value: unknown): Record<string, any> {
 }
 
 function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
     return value;
   }
 
-  if (typeof value === "string" && value.trim()) {
+  if (
+    typeof value === "string" &&
+    value.trim()
+  ) {
     const parsed = Number(value);
 
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed)
+      ? parsed
+      : null;
   }
 
   return null;
@@ -84,11 +101,19 @@ function asBoolean(value: unknown): boolean | null {
     return value;
   }
 
-  if (value === 1 || value === "1" || value === "true") {
+  if (
+    value === 1 ||
+    value === "1" ||
+    value === "true"
+  ) {
     return true;
   }
 
-  if (value === 0 || value === "0" || value === "false") {
+  if (
+    value === 0 ||
+    value === "0" ||
+    value === "false"
+  ) {
     return false;
   }
 
@@ -105,13 +130,15 @@ function rowKey(row: any) {
   );
 }
 
-function mapExactRows(
+function mapRemoteRows(
   rawRows: any[],
-  model: ModelDefinition,
-  safeLimit: number
+  model: ModelDefinition
 ): ExtendedHistoryRow[] {
   const aliases = new Set(
-    [model.modelKey, ...(model.aliases ?? [])].map(modelSlug)
+    [
+      model.modelKey,
+      ...(model.aliases ?? []),
+    ].map(modelSlug)
   );
 
   return rawRows
@@ -119,18 +146,35 @@ function mapExactRows(
       const payload = asObject(raw.payload);
 
       return {
-        asset: String(raw.asset ?? model.asset).toUpperCase(),
-        horizonH: Number(raw.horizon_h ?? model.horizonH),
-        modelKey: rowKey({ ...raw, payload }),
-        modelId: raw.model_id ?? payload.model_id,
-        modelFamily: raw.model_family ?? payload.model_family,
+        asset: String(
+          raw.asset ??
+            model.asset
+        ).toUpperCase(),
+        horizonH: Number(
+          raw.horizon_h ??
+            model.horizonH
+        ),
+        modelKey: rowKey({
+          ...raw,
+          payload,
+        }),
+        modelId:
+          raw.model_id ??
+          payload.model_id,
+        modelFamily:
+          raw.model_family ??
+          payload.model_family,
         predictionTimeUtc: String(
           raw.prediction_time_utc ??
             payload.prediction_time_utc ??
             payload.time_utc ??
             ""
         ),
-        bias: String(raw.bias ?? payload.bias ?? "Neutral"),
+        bias: String(
+          raw.bias ??
+            payload.bias ??
+            "Neutral"
+        ),
         startPrice: asNumber(
           raw.start_price ??
             payload.start_price_used ??
@@ -181,56 +225,40 @@ function mapExactRows(
         payload,
       } satisfies ExtendedHistoryRow;
     })
-    .filter((row) => aliases.has(row.modelKey))
-    .slice(0, safeLimit);
+    .filter((row) =>
+      aliases.has(row.modelKey)
+    );
 }
 
-async function fetchPublicFreeRows(
-  model: ModelDefinition,
+function mergeHistoryRows(
+  remoteRows: ExtendedHistoryRow[],
+  bundledRows: ExtendedHistoryRow[],
   safeLimit: number
-): Promise<any[]> {
-  const supabaseUrl =
-    process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+): ExtendedHistoryRow[] {
+  const merged = new Map<
+    string,
+    ExtendedHistoryRow
+  >();
 
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error(
-      "Missing public Supabase configuration for Free model history."
-    );
+  for (const row of [
+    ...bundledRows,
+    ...remoteRows,
+  ]) {
+    const key = [
+      row.modelKey,
+      row.predictionTimeUtc,
+    ].join("|");
+
+    merged.set(key, row);
   }
 
-  const params = new URLSearchParams();
-
-  params.set("select", HISTORY_COLUMNS);
-  params.set("asset", `eq.${model.asset}`);
-  params.set("horizon_h", `eq.${model.horizonH}`);
-  params.set("model_key", `eq.${model.modelKey}`);
-  params.set("order", "prediction_time_utc.desc");
-  params.set("limit", String(Math.min(500, safeLimit * 4)));
-
-  const response = await fetch(
-    `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/predictions?${params.toString()}`,
-    {
-      headers: {
-        apikey: publishableKey,
-        Accept: "application/json",
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-
-    throw new Error(
-      `Public Free history error: HTTP ${response.status} ${body}`
-    );
-  }
-
-  const data = await response.json();
-
-  return Array.isArray(data) ? data : [];
+  return [...merged.values()]
+    .sort((left, right) =>
+      right.predictionTimeUtc.localeCompare(
+        left.predictionTimeUtc
+      )
+    )
+    .slice(0, safeLimit);
 }
 
 export async function fetchExactModelHistory(
@@ -239,39 +267,61 @@ export async function fetchExactModelHistory(
 ): Promise<ExtendedHistoryRow[]> {
   const safeLimit = Math.max(
     1,
-    Math.min(500, Math.trunc(limit))
+    Math.min(
+      500,
+      Math.trunc(limit)
+    )
   );
 
-  const { data, error } = await supabase
+  const bundledRows =
+    BUNDLED_FREE_MODEL_HISTORY[
+      model.modelKey
+    ] ?? [];
+
+  const {
+    data,
+    error,
+  } = await supabase
     .from("predictions")
     .select(HISTORY_COLUMNS)
     .eq("asset", model.asset)
     .eq("horizon_h", model.horizonH)
-    .order("prediction_time_utc", { ascending: false })
-    .limit(Math.min(500, safeLimit * 4));
+    .order(
+      "prediction_time_utc",
+      { ascending: false }
+    )
+    .limit(
+      Math.min(
+        500,
+        safeLimit * 4
+      )
+    );
 
-  let rows = error
+  const remoteRows = error
     ? []
-    : mapExactRows(data ?? [], model, safeLimit);
+    : mapRemoteRows(
+        data ?? [],
+        model
+      );
 
-  if (!rows.length && model.tier === "Free") {
-    const publicRows = await fetchPublicFreeRows(
-      model,
-      safeLimit
-    );
+  const rows = mergeHistoryRows(
+    remoteRows,
+    bundledRows,
+    safeLimit
+  );
 
-    rows = mapExactRows(
-      publicRows,
-      model,
-      safeLimit
-    );
+  if (rows.length) {
+    return rows;
   }
 
-  if (error && model.tier !== "Free") {
+  if (
+    error &&
+    model.tier !== "Free"
+  ) {
     throw new Error(
       `Supabase model history error: ${error.message}`
     );
   }
 
-  return rows;
+  return [];
 }
