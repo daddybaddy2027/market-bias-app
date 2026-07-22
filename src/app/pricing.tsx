@@ -77,12 +77,12 @@ export default function PricingScreen() {
             AI MARKET EXPERT PRO
           </Text>
           <Text className="mt-4 text-4xl font-black leading-tight text-white">
-            Thirteen models. Two Free. Eleven Pro.
+            Thirteen models. Three Free. Ten Pro.
           </Text>
           <Text className="mt-4 text-base leading-7 text-zinc-400">
-            Free includes the verified EURUSD 3h production model and the new USDJPY
-            6h V3 model. Pro unlocks every other current prediction, probability,
-            forecast zone and exact model history.
+            Free includes the verified EURUSD 3h production model, GBPUSD 12h Final V2
+            and EURUSD 12h Final V2. Pro unlocks every other current prediction,
+            probability, forecast zone and exact model history.
           </Text>
         </View>
 
@@ -100,10 +100,11 @@ export default function PricingScreen() {
           </View>
 
           <FeatureRow>EURUSD 3h verified production direction model</FeatureRow>
-          <FeatureRow>USDJPY 6h V3 direction model under live verification</FeatureRow>
+          <FeatureRow>GBPUSD 12h Final V2 direction model</FeatureRow>
+          <FeatureRow>EURUSD 12h Final V2 direction model under live threshold validation</FeatureRow>
           <FeatureRow>Core macro regime, market state and currency strength</FeatureRow>
           <FeatureRow>Public evaluation and verified-history statistics</FeatureRow>
-          <FeatureRow>Locked preview of all eleven Pro models</FeatureRow>
+          <FeatureRow>Locked preview of all ten Pro models</FeatureRow>
           <FeatureRow included={false}>Current Pro bias, probability and forecast zones</FeatureRow>
           <FeatureRow included={false}>Full Pro prediction history and independent-sample filter</FeatureRow>
         </Card>
