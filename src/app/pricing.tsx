@@ -77,12 +77,12 @@ export default function PricingScreen() {
             AI MARKET EXPERT PRO
           </Text>
           <Text className="mt-4 text-4xl font-black leading-tight text-white">
-            Thirteen models. Three Free. Ten Pro.
+            Thirteen models. One Free. Twelve Pro.
           </Text>
           <Text className="mt-4 text-base leading-7 text-zinc-400">
-            Free includes the verified EURUSD 3h production model, GBPUSD 12h Final V2
-            and EURUSD 12h Final V2. Pro unlocks every other current prediction,
-            probability, forecast zone and exact model history.
+            Free includes the GBPUSD 12h Final V2 model, selected as the most stable
+             public production view. Pro unlocks every other current prediction,
+             probability, forecast zone and exact model history.
           </Text>
         </View>
 
@@ -98,13 +98,12 @@ export default function PricingScreen() {
               <Text className="text-xs font-black text-emerald-300">€0</Text>
             </View>
           </View>
-
-          <FeatureRow>EURUSD 3h verified production direction model</FeatureRow>
           <FeatureRow>GBPUSD 12h Final V2 direction model</FeatureRow>
-          <FeatureRow>EURUSD 12h Final V2 direction model under live threshold validation</FeatureRow>
+          <FeatureRow>Session-filtered public prediction schedule</FeatureRow>
+          <FeatureRow>Asia, London and New York decision windows</FeatureRow>
           <FeatureRow>Core macro regime, market state and currency strength</FeatureRow>
           <FeatureRow>Public evaluation and verified-history statistics</FeatureRow>
-          <FeatureRow>Locked preview of all ten Pro models</FeatureRow>
+          <FeatureRow>Locked preview of all twelve Pro models</FeatureRow>
           <FeatureRow included={false}>Current Pro bias, probability and forecast zones</FeatureRow>
           <FeatureRow included={false}>Full Pro prediction history and independent-sample filter</FeatureRow>
         </Card>
@@ -129,7 +128,7 @@ export default function PricingScreen() {
           <FeatureRow>All {MODEL_CATALOG.length} model cards, including {proModels.length} Pro models</FeatureRow>
           <FeatureRow>Current bias, probability, confidence and forecast zones</FeatureRow>
           <FeatureRow>Seven new V3 cross-asset models with clearly labelled evaluation metrics</FeatureRow>
-          <FeatureRow>Verified live history for EURUSD 3h and EURUSD 12h Final V2</FeatureRow>
+          <FeatureRow>Verified live history for the GBPUSD 12h Final V2 public model</FeatureRow>
           <FeatureRow>Independent non-overlapping history view</FeatureRow>
           <FeatureRow>Range models with path coverage and outcome tracking</FeatureRow>
           <FeatureRow>Automatic activation after PayPal subscription approval</FeatureRow>

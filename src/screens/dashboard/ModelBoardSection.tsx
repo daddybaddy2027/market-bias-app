@@ -20,9 +20,7 @@ import {
 } from "./DashboardPrimitives";
 
 const MODEL_DISPLAY_PRIORITY: Record<string, number> = {
-  EURUSD_12H_FINAL_APP_V2: 1,
-  GBPUSD_12H_FINAL_APP_V2: 2,
-  EURUSD_3H_PROD_V1: 3,
+  GBPUSD_12H_FINAL_APP_V2: 1,
 };
 
 const DISPLAY_MODELS = [...MODEL_CATALOG].sort((left, right) => {
