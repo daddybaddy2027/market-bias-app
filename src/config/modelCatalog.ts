@@ -1,9 +1,11 @@
 export type AccessTier = "Free" | "Pro";
-export type ModelKind = "direction" | "consensus_direction" | "hybrid";
+export type ModelKind = "direction" | "consensus_direction" | "hybrid" | "range";
 export type PerformanceSource =
   | "verified_live"
   | "strict_replay"
-  | "collecting";
+  | "collecting"
+  | "walk_forward_evaluation"
+  | "range_history";
 
 export type PerformanceStat = {
   source: PerformanceSource;
@@ -12,6 +14,10 @@ export type PerformanceStat = {
   n?: number;
   hits?: number;
   totalSignedPips?: number;
+  averageSignedPips?: number;
+  expectancyPips?: number;
+  profitFactor?: number;
+  maxDrawdownPips?: number;
   note?: string;
   period?: string;
 };
@@ -37,7 +43,7 @@ export type ModelDefinition = {
   family: string;
   group?: string;
   purpose: string;
-  status: "production" | "pilot";
+  status: "production" | "pilot" | "live_verification" | "range" | "candidate";
   performance: PerformanceStat;
   independent?: IndependentStat;
   secondaryPerformance?: PerformanceStat[];
