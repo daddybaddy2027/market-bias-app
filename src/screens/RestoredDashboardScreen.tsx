@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+﻿import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
@@ -155,10 +155,10 @@ export default function RestoredDashboardScreen() {
               </Text>
             </View>
             <View className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-2">
-              <Text className="text-xs font-black text-violet-200">Models €24.99</Text>
+              <Text className="text-xs font-black text-violet-200">Models â‚¬24.99</Text>
             </View>
             <View className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-2">
-              <Text className="text-xs font-black text-sky-200">Outlook €25</Text>
+              <Text className="text-xs font-black text-sky-200">Outlook â‚¬25</Text>
             </View>
           </View>
 
@@ -187,12 +187,12 @@ export default function RestoredDashboardScreen() {
 
             <Pressable
               onPress={() => router.push("/outlook" as never)}
-              className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-3 active:opacity-70"
+              className="w-full rounded-2xl border border-sky-400/70 bg-sky-500/20 px-5 py-4 shadow-lg active:opacity-70"
             >
-              <Text className="font-black text-cyan-200">
+              <Text className="font-black text-sky-100">
                 Technical & fundamental outlook
               </Text>
-              <Text className="mt-1 text-xs font-bold text-cyan-200/70">
+              <Text className="mt-1 text-xs font-bold text-sky-200">
                 {hasOutlookAccess ? "Full access" : "Preview available"}
               </Text>
             </Pressable>
@@ -210,10 +210,10 @@ export default function RestoredDashboardScreen() {
           </Text>
         </View>
 
-        <Card className="mb-6 border-cyan-500/30 bg-cyan-500/10">
+        <Card className="mb-6 border-sky-400/50 bg-sky-500/20">
           <View className="flex-row items-start justify-between">
             <View className="flex-1 pr-4">
-              <Text className="text-xs font-black uppercase tracking-[3px] text-cyan-300">
+              <Text className="text-xs font-black uppercase tracking-[3px] text-sky-300">
                 New premium research
               </Text>
               <Text className="mt-2 text-2xl font-black text-white">
@@ -223,17 +223,17 @@ export default function RestoredDashboardScreen() {
                 Weekly market regime, currency outlooks, main drivers, important events, pair of the week, technical structure, scenarios and invalidation. The first two sentences remain public, while the complete publication and archive require Outlook access.
               </Text>
             </View>
-            <View className="rounded-full border border-cyan-500/40 bg-black/30 px-3 py-2">
-              <Text className="text-xs font-black text-cyan-200">
+            <View className="rounded-full border border-sky-400/70 bg-black/30 px-3 py-2">
+              <Text className="text-xs font-black text-sky-100">
                 {hasOutlookAccess ? "OPEN" : "PREVIEW"}
               </Text>
             </View>
           </View>
           <Pressable
             onPress={() => router.push("/outlook" as never)}
-            className="mt-5 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4 active:opacity-70"
+            className="mt-5 rounded-2xl border border-sky-400/70 bg-sky-500/20 px-5 py-4 active:opacity-70"
           >
-            <Text className="text-center font-black text-cyan-100">
+            <Text className="text-center font-black text-white">
               Open outlook
             </Text>
           </Pressable>
@@ -357,3 +357,5 @@ export default function RestoredDashboardScreen() {
     </SafeAreaView>
   );
 }
+
+
