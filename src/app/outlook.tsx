@@ -5,6 +5,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -12,32 +13,14 @@ import {
 import {
   OUTLOOKS,
   OUTLOOK_STRUCTURE,
-  TechnicalFundamentalOutlook,
+  type TechnicalFundamentalOutlook,
 } from "../config/outlookContent";
 import { useAuth } from "../providers/AuthProvider";
-
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <View
-      className={`rounded-3xl border border-zinc-800 bg-zinc-950 p-5 ${className}`}
-    >
-      {children}
-    </View>
-  );
-}
 
 function formatPublishedAt(value: string) {
   const date = new Date(value);
 
-  if (!Number.isFinite(date.getTime())) {
-    return value;
-  }
+  if (!Number.isFinite(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -50,231 +33,644 @@ function formatPublishedAt(value: string) {
 
 function OutlookMeta({ outlook }: { outlook: TechnicalFundamentalOutlook }) {
   return (
-    <View className="mt-4 flex-row flex-wrap gap-2">
-      <View className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2">
-        <Text className="text-xs font-black text-zinc-300">
-          By {outlook.author}
-        </Text>
+    <View style={styles.metaRow}>
+      <View style={styles.metaPill}>
+        <Text style={styles.metaText}>By {outlook.author}</Text>
       </View>
-      <View className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2">
-        <Text className="text-xs font-black text-zinc-300">
-          {formatPublishedAt(outlook.publishedAt)}
-        </Text>
+      <View style={styles.metaPill}>
+        <Text style={styles.metaText}>{formatPublishedAt(outlook.publishedAt)}</Text>
       </View>
     </View>
   );
 }
 
+function StructureList() {
+  return (
+    <View style={styles.structureCard}>
+      <Text style={styles.structureTitle}>What each publication can include</Text>
+      {OUTLOOK_STRUCTURE.map((item) => (
+        <View key={item} style={styles.structureRow}>
+          <Text style={styles.checkmark}>✓</Text>
+          <Text style={styles.structureText}>{item}</Text>
+        </View>
+      ))}
+      <Text style={styles.structureNote}>
+        The author may adapt the order and emphasis to the weekly calendar, active
+        market regime and the quality of the available thesis.
+      </Text>
+    </View>
+  );
+}
+
 export default function OutlookScreen() {
-  const {
-    isAuthenticated,
-    hasOutlookAccess,
-  } = useAuth();
+  const { isAuthenticated, hasOutlookAccess } = useAuth();
 
   const orderedOutlooks = useMemo(
     () =>
       [...OUTLOOKS].sort(
         (a, b) =>
-          new Date(b.publishedAt).getTime() -
-          new Date(a.publishedAt).getTime()
+          new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
       ),
     []
   );
 
-  const [selectedId, setSelectedId] = useState(
-    orderedOutlooks[0]?.id ?? ""
-  );
+  const [selectedId, setSelectedId] = useState(orderedOutlooks[0]?.id ?? "");
 
   const selected =
-    orderedOutlooks.find((item) => item.id === selectedId) ??
-    orderedOutlooks[0];
+    orderedOutlooks.find((item) => item.id === selectedId) ?? orderedOutlooks[0];
+
+  const latestId = orderedOutlooks[0]?.id;
+  const selectedIsLatest = Boolean(selected && selected.id === latestId);
 
   return (
     <SafeAreaView
-      className="flex-1 bg-black"
-      style={
-        Platform.OS === "web"
-          ? ({ height: "100vh" } as any)
-          : undefined
-      }
+      style={[
+        styles.page,
+        Platform.OS === "web" ? ({ height: "100vh" } as any) : null,
+      ]}
     >
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-5 pb-24 pt-4"
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <Pressable
+          accessibilityRole="button"
           onPress={() => router.back()}
-          className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 active:opacity-70"
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
         >
-          <Text className="font-bold text-zinc-300">
-            ← Back
-          </Text>
+          <Text style={styles.backText}>← Back</Text>
         </Pressable>
 
-        <View className="mb-7">
-          <Text className="text-xs font-black uppercase tracking-[4px] text-sky-300">
-            HUMAN MARKET CONTEXT
+        <View style={styles.hero}>
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>HUMAN MARKET CONTEXT</Text>
+          </View>
+          <Text style={styles.heroTitle}>Technical and Fundamental Outlook</Text>
+          <Text style={styles.heroDescription}>
+            Weekly macro, sentiment and technical analysis for the main FX currencies
+            and pairs. Publications can also be updated around major events, while
+            previous theses remain stored with their original date and invalidation.
           </Text>
-          <Text className="mt-4 text-4xl font-black leading-tight text-white">
-            Technical and Fundamental Outlook
-          </Text>
-          <Text className="mt-4 text-base leading-7 text-zinc-400">
-            Weekly macro, sentiment and technical analysis for the main FX
-            currencies and pairs. The outlook is updated around major market
-            events, while every previous publication remains available in the
-            historical archive.
-          </Text>
+
+          <View
+            style={hasOutlookAccess ? styles.accessActiveBanner : styles.accessPreviewBanner}
+          >
+            <Text
+              style={hasOutlookAccess ? styles.accessActiveTitle : styles.accessPreviewTitle}
+            >
+              {hasOutlookAccess ? "Full Outlook access is active" : "Public preview mode"}
+            </Text>
+            <Text style={styles.accessBody}>
+              {hasOutlookAccess
+                ? "You can read complete publications and every available archived outlook."
+                : "You can read the first two sentences and inspect the full research structure before subscribing."}
+            </Text>
+          </View>
         </View>
 
         {selected ? (
-          <Card className="mb-5 border-sky-500/30 bg-sky-500/10">
-            <Text className="text-xs font-black uppercase tracking-[3px] text-sky-300">
-              Latest outlook
-            </Text>
-            <Text className="mt-3 text-2xl font-black text-white">
-              {selected.title}
-            </Text>
+          <View style={styles.articleCard}>
+            <View style={styles.articleHeaderRow}>
+              <View style={styles.articleHeaderCopy}>
+                <Text style={styles.articleKicker}>
+                  {selectedIsLatest ? "LATEST OUTLOOK" : "ARCHIVED OUTLOOK"}
+                </Text>
+                <Text style={styles.articleTitle}>{selected.title}</Text>
+              </View>
+              <View style={selectedIsLatest ? styles.currentBadge : styles.archiveBadge}>
+                <Text style={styles.statusBadgeText}>
+                  {selectedIsLatest ? "CURRENT" : "ARCHIVE"}
+                </Text>
+              </View>
+            </View>
+
             <OutlookMeta outlook={selected} />
 
-            <View className="mt-5">
+            <View style={styles.previewBlock}>
+              <Text style={styles.previewLabel}>PUBLIC PREVIEW</Text>
               {selected.preview.slice(0, 2).map((sentence) => (
-                <Text
-                  key={sentence}
-                  className="mb-3 text-base leading-7 text-zinc-200"
-                >
+                <Text key={sentence} style={styles.previewSentence}>
                   {sentence}
                 </Text>
               ))}
             </View>
 
             {hasOutlookAccess ? (
-              <View className="mt-3">
-                {selected.sections.map((section) => (
-                  <View
-                    key={section.key}
-                    className="mb-4 rounded-2xl border border-zinc-800 bg-black/30 p-4"
-                  >
-                    <Text className="text-sm font-black uppercase tracking-[2px] text-violet-300">
-                      {section.title}
+              <View style={styles.fullAnalysis}>
+                {selected.sections.map((section, index) => (
+                  <View key={section.key} style={styles.sectionCard}>
+                    <Text style={styles.sectionNumber}>
+                      {String(index + 1).padStart(2, "0")}
                     </Text>
-                    <Text className="mt-2 text-sm leading-6 text-zinc-300">
-                      {section.body}
-                    </Text>
+                    <View style={styles.sectionCopy}>
+                      <Text style={styles.sectionTitle}>{section.title}</Text>
+                      <Text style={styles.sectionBody}>{section.body}</Text>
+                    </View>
                   </View>
                 ))}
               </View>
             ) : (
-              <View className="mt-4 rounded-3xl border border-violet-500/40 bg-violet-500/10 p-5">
-                <Text className="text-xs font-black uppercase tracking-[3px] text-violet-300">
-                  Premium outlook
-                </Text>
-                <Text className="mt-3 text-2xl font-black text-white">
-                  The complete analysis is locked
-                </Text>
-                <Text className="mt-3 text-sm leading-6 text-zinc-300">
-                  The preview remains public. Full access includes the entire
-                  weekly outlook, event updates and the historical archive.
+              <View style={styles.lockedCard}>
+                <Text style={styles.lockedKicker}>PREMIUM OUTLOOK</Text>
+                <Text style={styles.lockedTitle}>The complete analysis is locked</Text>
+                <Text style={styles.lockedBody}>
+                  Full access includes the complete weekly thesis, event updates,
+                  technical structure, alternative scenarios, invalidation and the
+                  historical archive.
                 </Text>
 
-                <View className="mt-5 rounded-2xl border border-zinc-800 bg-black/30 p-4">
-                  <Text className="text-sm font-black text-white">
-                    What each outlook can include
-                  </Text>
-                  {OUTLOOK_STRUCTURE.map((item) => (
-                    <View
-                      key={item}
-                      className="mt-3 flex-row items-start"
-                    >
-                      <Text className="mr-3 text-emerald-300">✓</Text>
-                      <Text className="flex-1 text-sm leading-6 text-zinc-300">
-                        {item}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                <StructureList />
 
-                <View className="mt-5 flex-row items-center justify-between rounded-2xl border border-violet-500/30 bg-violet-500/10 p-4">
+                <View style={styles.priceRow}>
                   <View>
-                    <Text className="text-xs font-black uppercase tracking-[2px] text-violet-300">
-                      Outlook access
-                    </Text>
-                    <Text className="mt-1 text-3xl font-black text-white">
-                      €25
-                    </Text>
-                    <Text className="text-xs text-zinc-400">
-                      per month
-                    </Text>
+                    <Text style={styles.priceLabel}>OUTLOOK ACCESS</Text>
+                    <Text style={styles.price}>€25</Text>
+                    <Text style={styles.pricePeriod}>per month</Text>
                   </View>
+
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() =>
-                      router.push(
-                        (isAuthenticated ? "/pricing" : "/login") as never
-                      )
+                      router.push((isAuthenticated ? "/pricing" : "/login") as never)
                     }
-                    className="rounded-2xl border border-violet-400/40 bg-violet-500/20 px-5 py-4 active:opacity-70"
+                    style={({ pressed }) => [
+                      styles.unlockButton,
+                      pressed && styles.pressed,
+                    ]}
                   >
-                    <Text className="font-black text-violet-100">
-                      {isAuthenticated
-                        ? "View plan"
-                        : "Create account"}
+                    <Text style={styles.unlockButtonText}>
+                      {isAuthenticated ? "View Outlook plan" : "Create account"}
                     </Text>
                   </Pressable>
                 </View>
               </View>
             )}
-          </Card>
+          </View>
         ) : (
-          <Card className="mb-5">
-            <Text className="text-zinc-400">
-              No outlook has been published yet.
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No outlook has been published yet</Text>
+            <Text style={styles.emptyBody}>
+              The first publication will appear here after review and approval.
             </Text>
-          </Card>
+          </View>
         )}
 
-        <View className="mb-3 mt-3">
-          <Text className="text-xs font-black uppercase tracking-[3px] text-zinc-500">
-            Historical archive
-          </Text>
-          <Text className="mt-2 text-2xl font-black text-white">
-            Previous outlooks
-          </Text>
-          <Text className="mt-2 text-sm leading-6 text-zinc-400">
-            When a new outlook is published, the previous one remains here with
-            its original publication date and thesis.
+        <View style={styles.archiveHeader}>
+          <Text style={styles.archiveKicker}>HISTORICAL ARCHIVE</Text>
+          <Text style={styles.archiveTitle}>Previous outlooks</Text>
+          <Text style={styles.archiveDescription}>
+            A new publication becomes the current outlook. Every earlier publication
+            remains available with its original date, thesis and invalidation.
           </Text>
         </View>
 
-        {orderedOutlooks.map((outlook, index) => (
-          <Pressable
-            key={outlook.id}
-            onPress={() => setSelectedId(outlook.id)}
-            className={`mb-3 rounded-3xl border p-5 active:opacity-70 ${
-              selected?.id === outlook.id
-                ? "border-sky-500/40 bg-sky-500/10"
-                : "border-zinc-800 bg-zinc-950"
-            }`}
-          >
-            <View className="flex-row items-start justify-between">
-              <View className="flex-1 pr-4">
-                <Text className="text-xs font-black uppercase tracking-[2px] text-zinc-500">
-                  {index === 0 ? "Current" : "Archived"}
+        {orderedOutlooks.map((outlook, index) => {
+          const isSelected = selected?.id === outlook.id;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              key={outlook.id}
+              onPress={() => setSelectedId(outlook.id)}
+              style={({ pressed }) => [
+                styles.archiveItem,
+                isSelected && styles.archiveItemSelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.archiveItemCopy}>
+                <Text style={isSelected ? styles.archiveItemStateActive : styles.archiveItemState}>
+                  {index === 0 ? "CURRENT" : "ARCHIVED"}
                 </Text>
-                <Text className="mt-2 text-lg font-black text-white">
-                  {outlook.title}
-                </Text>
-                <Text className="mt-2 text-sm text-zinc-400">
+                <Text style={styles.archiveItemTitle}>{outlook.title}</Text>
+                <Text style={styles.archiveItemMeta}>
                   {formatPublishedAt(outlook.publishedAt)} · {outlook.author}
                 </Text>
               </View>
-              <Text className="text-xl text-zinc-500">→</Text>
-            </View>
-          </Pressable>
-        ))}
+              <Text style={styles.archiveArrow}>→</Text>
+            </Pressable>
+          );
+        })}
 
-        <Text className="mt-5 text-center text-xs leading-5 text-zinc-600">
+        <Text style={styles.disclaimer}>
           Educational market commentary only. Not financial advice.
         </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  scrollContent: {
+    width: "100%",
+    maxWidth: 1060,
+    alignSelf: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 96,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    borderRadius: 18,
+    backgroundColor: "#09090b",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backText: {
+    color: "#d4d4d8",
+    fontWeight: "800",
+  },
+  hero: {
+    marginBottom: 26,
+  },
+  heroBadge: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 999,
+    backgroundColor: "#082f49",
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+  },
+  heroBadgeText: {
+    color: "#7dd3fc",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2.3,
+  },
+  heroTitle: {
+    marginTop: 18,
+    color: "#ffffff",
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: "900",
+  },
+  heroDescription: {
+    marginTop: 14,
+    color: "#a1a1aa",
+    fontSize: 16,
+    lineHeight: 27,
+  },
+  accessActiveBanner: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: "#10b981",
+    borderRadius: 20,
+    backgroundColor: "#022c22",
+    padding: 17,
+  },
+  accessPreviewBanner: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 20,
+    backgroundColor: "#082f49",
+    padding: 17,
+  },
+  accessActiveTitle: {
+    color: "#6ee7b7",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  accessPreviewTitle: {
+    color: "#7dd3fc",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  accessBody: {
+    marginTop: 7,
+    color: "#d4d4d8",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  articleCard: {
+    borderWidth: 1,
+    borderColor: "#0284c7",
+    borderRadius: 30,
+    backgroundColor: "#071018",
+    padding: 22,
+  },
+  articleHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  articleHeaderCopy: {
+    flex: 1,
+    paddingRight: 14,
+  },
+  articleKicker: {
+    color: "#7dd3fc",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+  },
+  articleTitle: {
+    marginTop: 10,
+    color: "#ffffff",
+    fontSize: 27,
+    lineHeight: 34,
+    fontWeight: "900",
+  },
+  currentBadge: {
+    borderWidth: 1,
+    borderColor: "#10b981",
+    borderRadius: 999,
+    backgroundColor: "#022c22",
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  archiveBadge: {
+    borderWidth: 1,
+    borderColor: "#71717a",
+    borderRadius: 999,
+    backgroundColor: "#18181b",
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  statusBadgeText: {
+    color: "#f4f4f5",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  metaRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  metaPill: {
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    borderRadius: 999,
+    backgroundColor: "#18181b",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  metaText: {
+    color: "#d4d4d8",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  previewBlock: {
+    marginTop: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: "#38bdf8",
+    backgroundColor: "#082f49",
+    padding: 18,
+  },
+  previewLabel: {
+    marginBottom: 10,
+    color: "#7dd3fc",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  previewSentence: {
+    marginBottom: 10,
+    color: "#f4f4f5",
+    fontSize: 16,
+    lineHeight: 27,
+  },
+  fullAnalysis: {
+    marginTop: 18,
+    gap: 12,
+  },
+  sectionCard: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#27272a",
+    borderRadius: 22,
+    backgroundColor: "#09090b",
+    padding: 17,
+  },
+  sectionNumber: {
+    marginRight: 14,
+    color: "#71717a",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  sectionCopy: {
+    flex: 1,
+  },
+  sectionTitle: {
+    color: "#c4b5fd",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  sectionBody: {
+    marginTop: 9,
+    color: "#d4d4d8",
+    fontSize: 14,
+    lineHeight: 23,
+  },
+  lockedCard: {
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#8b5cf6",
+    borderRadius: 24,
+    backgroundColor: "#2e1065",
+    padding: 20,
+  },
+  lockedKicker: {
+    color: "#c4b5fd",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2.4,
+  },
+  lockedTitle: {
+    marginTop: 10,
+    color: "#ffffff",
+    fontSize: 25,
+    lineHeight: 32,
+    fontWeight: "900",
+  },
+  lockedBody: {
+    marginTop: 11,
+    color: "#e4e4e7",
+    fontSize: 14,
+    lineHeight: 23,
+  },
+  structureCard: {
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    borderRadius: 20,
+    backgroundColor: "#09090b",
+    padding: 17,
+  },
+  structureTitle: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  structureRow: {
+    marginTop: 11,
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  checkmark: {
+    marginRight: 10,
+    color: "#6ee7b7",
+    fontWeight: "900",
+  },
+  structureText: {
+    flex: 1,
+    color: "#d4d4d8",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  structureNote: {
+    marginTop: 14,
+    color: "#71717a",
+    fontSize: 12,
+    lineHeight: 19,
+  },
+  priceRow: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    borderWidth: 1,
+    borderColor: "#7c3aed",
+    borderRadius: 20,
+    backgroundColor: "#1e1b4b",
+    padding: 16,
+  },
+  priceLabel: {
+    color: "#c4b5fd",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  price: {
+    marginTop: 4,
+    color: "#ffffff",
+    fontSize: 31,
+    fontWeight: "900",
+  },
+  pricePeriod: {
+    color: "#a1a1aa",
+    fontSize: 12,
+  },
+  unlockButton: {
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#c4b5fd",
+    borderRadius: 17,
+    backgroundColor: "#6d28d9",
+    paddingHorizontal: 17,
+    paddingVertical: 12,
+  },
+  unlockButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  emptyCard: {
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    borderRadius: 24,
+    backgroundColor: "#09090b",
+    padding: 20,
+  },
+  emptyTitle: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  emptyBody: {
+    marginTop: 9,
+    color: "#a1a1aa",
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  archiveHeader: {
+    marginTop: 34,
+    marginBottom: 14,
+  },
+  archiveKicker: {
+    color: "#71717a",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+  },
+  archiveTitle: {
+    marginTop: 8,
+    color: "#ffffff",
+    fontSize: 27,
+    fontWeight: "900",
+  },
+  archiveDescription: {
+    marginTop: 8,
+    color: "#a1a1aa",
+    fontSize: 14,
+    lineHeight: 23,
+  },
+  archiveItem: {
+    marginBottom: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#27272a",
+    borderRadius: 22,
+    backgroundColor: "#09090b",
+    padding: 17,
+  },
+  archiveItemSelected: {
+    borderColor: "#38bdf8",
+    backgroundColor: "#082f49",
+  },
+  archiveItemCopy: {
+    flex: 1,
+    paddingRight: 14,
+  },
+  archiveItemState: {
+    color: "#71717a",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.7,
+  },
+  archiveItemStateActive: {
+    color: "#7dd3fc",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.7,
+  },
+  archiveItemTitle: {
+    marginTop: 7,
+    color: "#ffffff",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  archiveItemMeta: {
+    marginTop: 7,
+    color: "#a1a1aa",
+    fontSize: 12,
+  },
+  archiveArrow: {
+    color: "#a1a1aa",
+    fontSize: 22,
+  },
+  disclaimer: {
+    marginTop: 24,
+    color: "#52525b",
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: "center",
+  },
+});
