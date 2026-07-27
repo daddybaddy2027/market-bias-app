@@ -79,9 +79,19 @@ function legacyProfileHasProAccess(profile: UserProfile | null) {
 function profileHasModelsAccess(profile: UserProfile | null) {
   if (!profileSubscriptionIsActive(profile)) return false;
 
-  if (typeof profile?.models_access === "boolean") {
-    return profile.models_access;
+  if (profile?.models_access === true) return true;
+
+  // The currently deployed PayPal webhook still writes the legacy Pro fields.
+  // Until plan-to-entitlement mapping is added, preserve Models access for that
+  // existing PayPal subscription flow only.
+  if (
+    profile?.models_access === false &&
+    profile.subscription_provider === "paypal"
+  ) {
+    return legacyProfileHasProAccess(profile);
   }
+
+  if (profile?.models_access === false) return false;
 
   return legacyProfileHasProAccess(profile);
 }
