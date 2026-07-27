@@ -120,7 +120,7 @@ async function getSignedChartUrl(path?: string | null) {
     return null;
   }
 
-  return data.signedUrl;
+  return data?.signedUrl ?? null;
 }
 
 async function mapFullRow(row: FullOutlookRow): Promise<OutlookArticle> {
