@@ -31,6 +31,8 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.local
 .env*.local
 
 # typescript
@@ -42,9 +44,7 @@ app-example
 /ios
 /android
 
-.env.local
-.env*.local
-
-.env
-.env.local
-.env*.local
+# local development backups and temporary Supabase state
+_backups/
+**/*_BACKUP_*
+supabase/.temp/

@@ -1,9 +1,7 @@
-import type {
-  Session,
-  User,
-} from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -12,9 +10,7 @@ import React, {
 
 import { supabase } from "../lib/supabase";
 
-export type UserPlan =
-  | "free"
-  | "pro";
+export type UserPlan = "free" | "pro";
 
 export type SubscriptionStatus =
   | "none"
@@ -29,8 +25,15 @@ export type UserProfile = {
   email: string | null;
   plan: UserPlan;
   subscription_status: SubscriptionStatus;
+  subscription_provider: string | null;
   subscription_expires_at: string | null;
+  subscription_started_at?: string | null;
+  subscription_updated_at?: string | null;
   provider_customer_id: string | null;
+  provider_subscription_id?: string | null;
+  paypal_plan_id?: string | null;
+  models_access: boolean | null;
+  outlook_access: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -43,25 +46,16 @@ type AuthContextValue = {
   profile: UserProfile | null;
   isAuthenticated: boolean;
   isPro: boolean;
+  hasModelsAccess: boolean;
+  hasOutlookAccess: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
-const AuthContext =
-  createContext<AuthContextValue | null>(
-    null
-  );
+const AuthContext = createContext<AuthContextValue | null>(null);
 
-function profileHasProAccess(
-  profile: UserProfile | null
-) {
-  if (!profile) {
-    return false;
-  }
-
-  if (profile.plan !== "pro") {
-    return false;
-  }
+function profileSubscriptionIsActive(profile: UserProfile | null) {
+  if (!profile) return false;
 
   if (
     profile.subscription_status !== "active" &&
@@ -70,41 +64,55 @@ function profileHasProAccess(
     return false;
   }
 
-  if (!profile.subscription_expires_at) {
-    return true;
-  }
+  if (!profile.subscription_expires_at) return true;
 
-  const expiresAt =
-    new Date(
-      profile.subscription_expires_at
-    ).getTime();
+  const expiresAt = new Date(profile.subscription_expires_at).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
 
-  return (
-    Number.isFinite(expiresAt) &&
-    expiresAt > Date.now()
+function legacyProfileHasProAccess(profile: UserProfile | null) {
+  return Boolean(
+    profile?.plan === "pro" && profileSubscriptionIsActive(profile)
   );
 }
 
-export function AuthProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [initializing, setInitializing] =
-    useState(true);
+function profileHasModelsAccess(profile: UserProfile | null) {
+  if (!profileSubscriptionIsActive(profile)) return false;
 
-  const [profileLoading, setProfileLoading] =
-    useState(false);
+  if (profile?.models_access === true) return true;
 
-  const [session, setSession] =
-    useState<Session | null>(null);
-
-  const [profile, setProfile] =
-    useState<UserProfile | null>(null);
-
-  async function loadProfile(
-    userId?: string
+  // The currently deployed PayPal webhook still writes the legacy Pro fields.
+  // Until plan-to-entitlement mapping is added, preserve Models access for that
+  // existing PayPal subscription flow only.
+  if (
+    profile?.models_access === false &&
+    profile.subscription_provider === "paypal"
   ) {
+    return legacyProfileHasProAccess(profile);
+  }
+
+  if (profile?.models_access === false) return false;
+
+  return legacyProfileHasProAccess(profile);
+}
+
+function profileHasOutlookAccess(profile: UserProfile | null) {
+  if (!profileSubscriptionIsActive(profile)) return false;
+
+  if (typeof profile?.outlook_access === "boolean") {
+    return profile.outlook_access;
+  }
+
+  return legacyProfileHasProAccess(profile);
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [initializing, setInitializing] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  const loadProfile = useCallback(async (userId?: string) => {
     if (!userId) {
       setProfile(null);
       return;
@@ -113,114 +121,64 @@ export function AuthProvider({
     setProfileLoading(true);
 
     try {
-      const { data, error } =
-        await supabase
-          .from("profiles")
-          .select(
-            [
-              "user_id",
-              "email",
-              "plan",
-              "subscription_status",
-              "subscription_expires_at",
-              "provider_customer_id",
-              "created_at",
-              "updated_at",
-            ].join(",")
-          )
-          .eq("user_id", userId)
-          .maybeSingle();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setProfile(
-        (data as UserProfile | null) ??
-          null
-      );
+      setProfile((data as UserProfile | null) ?? null);
     } catch (error) {
-      console.error(
-        "Failed to load profile:",
-        error
-      );
-
+      console.error("Failed to load profile:", error);
       setProfile(null);
+      throw error;
     } finally {
       setProfileLoading(false);
     }
-  }
+  }, []);
 
-  async function refreshProfile() {
-    await loadProfile(
-      session?.user.id
-    );
-  }
+  const refreshProfile = useCallback(async () => {
+    await loadProfile(session?.user.id);
+  }, [loadProfile, session?.user.id]);
 
-  async function signOut() {
-    const { error } =
-      await supabase.auth.signOut();
-
-    if (error) {
-      throw error;
-    }
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
 
     setProfile(null);
-  }
+    setSession(null);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
     async function restoreSession() {
       try {
-        const { data, error } =
-          await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!mounted) return;
 
-        if (error) {
-          throw error;
-        }
-
-        if (!mounted) {
-          return;
-        }
-
-        setSession(
-          data.session ?? null
-        );
+        setSession(data.session ?? null);
       } catch (error) {
-        console.error(
-          "Failed to restore session:",
-          error
-        );
-
-        if (mounted) {
-          setSession(null);
-        }
+        console.error("Failed to restore session:", error);
+        if (mounted) setSession(null);
       } finally {
-        if (mounted) {
-          setInitializing(false);
-        }
+        if (mounted) setInitializing(false);
       }
     }
 
-    restoreSession();
+    void restoreSession();
 
     const {
       data: { subscription },
-    } =
-      supabase.auth.onAuthStateChange(
-        (_event, nextSession) => {
-          if (!mounted) {
-            return;
-          }
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
 
-          setSession(
-            nextSession ?? null
-          );
-
-          setInitializing(false);
-        }
-      );
+      setSession(nextSession ?? null);
+      setInitializing(false);
+    });
 
     return () => {
       mounted = false;
@@ -229,54 +187,44 @@ export function AuthProvider({
   }, []);
 
   useEffect(() => {
-    loadProfile(
-      session?.user.id
-    );
-  }, [session?.user.id]);
+    void loadProfile(session?.user.id).catch(() => undefined);
+  }, [loadProfile, session?.user.id]);
 
-  const value =
-    useMemo<AuthContextValue>(
-      () => ({
-        initializing,
-        profileLoading,
-        session,
-        user:
-          session?.user ?? null,
-        profile,
-        isAuthenticated:
-          Boolean(session?.user),
-        isPro:
-          profileHasProAccess(profile),
-        refreshProfile,
-        signOut,
-      }),
-      [
-        initializing,
-        profileLoading,
-        session,
-        profile,
-      ]
-    );
+  const value = useMemo<AuthContextValue>(() => {
+    const hasModelsAccess = profileHasModelsAccess(profile);
+    const hasOutlookAccess = profileHasOutlookAccess(profile);
 
-  return (
-    <AuthContext.Provider
-      value={value}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+    return {
+      initializing,
+      profileLoading,
+      session,
+      user: session?.user ?? null,
+      profile,
+      isAuthenticated: Boolean(session?.user),
+      isPro: hasModelsAccess,
+      hasModelsAccess,
+      hasOutlookAccess,
+      refreshProfile,
+      signOut,
+    };
+  }, [
+    initializing,
+    profileLoading,
+    session,
+    profile,
+    refreshProfile,
+    signOut,
+  ]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const value =
-    useContext(AuthContext);
+  const value = useContext(AuthContext);
 
   if (!value) {
-    throw new Error(
-      "useAuth must be used inside AuthProvider"
-    );
+    throw new Error("useAuth must be used inside AuthProvider");
   }
 
   return value;
 }
-

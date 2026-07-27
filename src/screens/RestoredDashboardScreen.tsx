@@ -1,11 +1,12 @@
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -33,6 +34,7 @@ import { MODEL_COUNTS, ModelBoardSection } from "./dashboard/ModelBoardSection";
 
 function DriverCard({ item }: { item: MarketDriver }) {
   const classes = biasClasses(`${item.state} ${item.title}`);
+
   return (
     <Card className="mb-3">
       <View className="flex-row items-start justify-between">
@@ -49,13 +51,7 @@ function DriverCard({ item }: { item: MarketDriver }) {
   );
 }
 
-function CurrencyRow({
-  item,
-  index,
-}: {
-  item: CurrencyStrengthItem;
-  index: number;
-}) {
+function CurrencyRow({ item, index }: { item: CurrencyStrengthItem; index: number }) {
   return (
     <View className="mb-3 rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
       <View className="flex-row items-center justify-between">
@@ -78,16 +74,87 @@ function CurrencyRow({
   );
 }
 
+function OutlookButton({
+  hasAccess,
+}: {
+  hasAccess: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Open Technical and Fundamental Outlook"
+      onPress={() => router.push("/outlook" as never)}
+      style={({ pressed }) => [
+        styles.outlookNavButton,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={styles.outlookNavTitle}>Technical & Fundamental Outlook</Text>
+      <Text style={styles.outlookNavSubtitle}>
+        {hasAccess ? "Full access" : "Public preview available"}
+      </Text>
+    </Pressable>
+  );
+}
+
+function OutlookPromoCard({
+  hasAccess,
+}: {
+  hasAccess: boolean;
+}) {
+  return (
+    <View style={styles.outlookCard}>
+      <View style={styles.outlookCardHeader}>
+        <View style={styles.outlookCardCopy}>
+          <Text style={styles.outlookKicker}>HUMAN MARKET RESEARCH</Text>
+          <Text style={styles.outlookTitle}>Technical and Fundamental Outlook</Text>
+          <Text style={styles.outlookBody}>
+            Weekly market regime, currency outlooks, main drivers, important events,
+            pair of the week, technical structure, scenarios and invalidation. The
+            first two sentences remain public, while the complete publication and
+            archive require Outlook access.
+          </Text>
+        </View>
+        <View style={styles.outlookBadge}>
+          <Text style={styles.outlookBadgeText}>{hasAccess ? "OPEN" : "PREVIEW"}</Text>
+        </View>
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push("/outlook" as never)}
+        style={({ pressed }) => [styles.outlookOpenButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.outlookOpenText}>Open Outlook</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function RestoredDashboardScreen() {
-  const { isAuthenticated, isPro } = useAuth();
+  const {
+    isAuthenticated,
+    hasModelsAccess,
+    hasOutlookAccess,
+  } = useAuth();
+
   const [market, setMarket] = useState<MarketState | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const accountLabel = useMemo(() => {
+    if (!isAuthenticated) return "Sign in / Create account";
+    if (hasModelsAccess && hasOutlookAccess) return "Complete account";
+    if (hasModelsAccess) return "Models account";
+    if (hasOutlookAccess) return "Outlook account";
+    return "Free account";
+  }, [hasModelsAccess, hasOutlookAccess, isAuthenticated]);
+
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
     setError(null);
+
     try {
       setMarket(await fetchMarketState());
     } catch (exc) {
@@ -111,7 +178,7 @@ export default function RestoredDashboardScreen() {
     >
       <ScrollView
         className="flex-1"
-        contentContainerClassName="px-5 pb-24 pt-4"
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />
         }
@@ -130,8 +197,9 @@ export default function RestoredDashboardScreen() {
             Cross-Asset Bias, Sentiment & Probabilistic Forecasts
           </Text>
           <Text className="mt-4 text-base leading-7 text-zinc-400">
-            Markets are not isolated charts. They are connected flows of capital moving between
-            currencies, equities, volatility, government yields, metals and defensive assets.
+            Markets are not isolated charts. They are connected flows of capital moving
+            between currencies, equities, volatility, government yields, metals and
+            defensive assets.
           </Text>
 
           <View className="mt-5 flex-row flex-wrap gap-2">
@@ -151,24 +219,19 @@ export default function RestoredDashboardScreen() {
               </Text>
             </View>
             <View className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-2">
-              <Text className="text-xs font-black text-violet-200">€24.99/month</Text>
+              <Text className="text-xs font-black text-violet-200">Models €24.99</Text>
+            </View>
+            <View className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-2">
+              <Text className="text-xs font-black text-sky-200">Outlook €25</Text>
             </View>
           </View>
 
           <View className="mt-5 flex-row flex-wrap gap-3">
             <Pressable
-              onPress={() =>
-                router.push((isAuthenticated ? "/account" : "/login") as never)
-              }
+              onPress={() => router.push((isAuthenticated ? "/account" : "/login") as never)}
               className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 active:opacity-70"
             >
-              <Text className="font-black text-emerald-300">
-                {isAuthenticated
-                  ? isPro
-                    ? "Pro account"
-                    : "Free account"
-                  : "Sign in / Create account"}
-              </Text>
+              <Text className="font-black text-emerald-300">{accountLabel}</Text>
             </Pressable>
 
             <Pressable
@@ -186,10 +249,14 @@ export default function RestoredDashboardScreen() {
             </Pressable>
           </View>
 
+          <OutlookButton hasAccess={hasOutlookAccess} />
+
           <Text className="mt-4 text-xs text-zinc-500">
             Market data: {formatTime(market?.marketDataTimeUTC ?? market?.generatedAt)}
           </Text>
         </View>
+
+        <OutlookPromoCard hasAccess={hasOutlookAccess} />
 
         <SectionTitle
           kicker="How it works"
@@ -220,9 +287,9 @@ export default function RestoredDashboardScreen() {
             Fundamentals create pressure. Capital flows express it through price.
           </Text>
           <Text className="mt-3 text-sm leading-6 text-zinc-300">
-            Macro fundamentals, positioning, liquidity and technical structure influence how capital
-            moves between asset classes. The goal is not certainty. It is a more informed decision
-            process as the environment changes.
+            Macro fundamentals, positioning, liquidity and technical structure influence
+            how capital moves between asset classes. The goal is not certainty. It is a
+            more informed decision process as the environment changes.
           </Text>
         </Card>
 
@@ -267,7 +334,10 @@ export default function RestoredDashboardScreen() {
           </Card>
         ) : null}
 
-        <ModelBoardSection assets={market?.assets ?? []} userIsPro={Boolean(isPro)} />
+        <ModelBoardSection
+          assets={market?.assets ?? []}
+          userIsPro={Boolean(hasModelsAccess)}
+        />
 
         <SectionTitle
           kicker="Cross-asset"
@@ -302,10 +372,118 @@ export default function RestoredDashboardScreen() {
         </View>
 
         <Text className="mt-6 text-center text-xs leading-5 text-zinc-600">
-          Decision support only. Evaluation accuracy is not live accuracy, and neither is a guarantee
-          of future performance.
+          Decision support only. Evaluation accuracy is not live accuracy, and neither
+          is a guarantee of future performance.
         </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    width: "100%",
+    maxWidth: 1180,
+    alignSelf: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 96,
+  },
+  outlookNavButton: {
+    width: "100%",
+    minHeight: 72,
+    marginTop: 14,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 20,
+    backgroundColor: "#0c4a6e",
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    shadowColor: "#38bdf8",
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  outlookNavTitle: {
+    color: "#ffffff",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  outlookNavSubtitle: {
+    marginTop: 5,
+    color: "#bae6fd",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  outlookCard: {
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#0284c7",
+    borderRadius: 28,
+    backgroundColor: "#082f49",
+    padding: 22,
+  },
+  outlookCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  outlookCardCopy: {
+    flex: 1,
+    paddingRight: 14,
+  },
+  outlookKicker: {
+    color: "#7dd3fc",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+  },
+  outlookTitle: {
+    marginTop: 10,
+    color: "#ffffff",
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: "900",
+  },
+  outlookBody: {
+    marginTop: 12,
+    color: "#d4d4d8",
+    fontSize: 14,
+    lineHeight: 23,
+  },
+  outlookBadge: {
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 999,
+    backgroundColor: "#0c4a6e",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  outlookBadgeText: {
+    color: "#e0f2fe",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  outlookOpenButton: {
+    minHeight: 54,
+    marginTop: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#7dd3fc",
+    borderRadius: 18,
+    backgroundColor: "#0369a1",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  outlookOpenText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+});
