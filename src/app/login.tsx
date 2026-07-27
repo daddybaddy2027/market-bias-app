@@ -11,10 +11,12 @@ import {
   View,
 } from "react-native";
 
+import { getAuthRedirectUrl } from "../lib/authRedirects";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../providers/AuthProvider";
 
 type MessageType = "error" | "success" | "info";
+type LoadingAction = "signin" | "signup" | "magic" | null;
 
 type MessageState = {
   type: MessageType;
@@ -28,7 +30,7 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loadingAction, setLoadingAction] = useState<"signin" | "signup" | null>(null);
+  const [loadingAction, setLoadingAction] = useState<LoadingAction>(null);
   const [message, setMessage] = useState<MessageState>(null);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function LoginScreen() {
     }
   }, [initializing, isAuthenticated]);
 
-  function validate() {
+  function validateEmail() {
     const cleanEmail = email.trim().toLowerCase();
 
     if (!cleanEmail) {
@@ -50,20 +52,24 @@ export default function LoginScreen() {
       return null;
     }
 
+    return cleanEmail;
+  }
+
+  function validatePassword() {
     if (password.length < 6) {
       setMessage({
         type: "error",
         text: "Password must contain at least 6 characters.",
       });
-      return null;
+      return false;
     }
 
-    return cleanEmail;
+    return true;
   }
 
   async function handleSignIn() {
-    const cleanEmail = validate();
-    if (!cleanEmail || loadingAction) return;
+    const cleanEmail = validateEmail();
+    if (!cleanEmail || !validatePassword() || loadingAction) return;
 
     setLoadingAction("signin");
     setMessage(null);
@@ -91,8 +97,8 @@ export default function LoginScreen() {
   }
 
   async function handleSignUp() {
-    const cleanEmail = validate();
-    if (!cleanEmail || loadingAction) return;
+    const cleanEmail = validateEmail();
+    if (!cleanEmail || !validatePassword() || loadingAction) return;
 
     setLoadingAction("signup");
     setMessage(null);
@@ -101,6 +107,9 @@ export default function LoginScreen() {
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl("account"),
+        },
       });
 
       if (error) throw error;
@@ -122,6 +131,38 @@ export default function LoginScreen() {
       setMessage({
         type: "error",
         text: error?.message ?? "Account creation failed.",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  async function handleMagicLink() {
+    const cleanEmail = validateEmail();
+    if (!cleanEmail || loadingAction) return;
+
+    setLoadingAction("magic");
+    setMessage(null);
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: getAuthRedirectUrl("account"),
+        },
+      });
+
+      if (error) throw error;
+
+      setMessage({
+        type: "success",
+        text: "Secure sign-in link sent. It expires shortly and can be used once.",
+      });
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error?.message ?? "The sign-in link could not be sent.",
       });
     } finally {
       setLoadingAction(null);
@@ -163,7 +204,17 @@ export default function LoginScreen() {
             style={styles.input}
           />
 
-          <Text style={styles.label}>PASSWORD</Text>
+          <View style={styles.passwordHeader}>
+            <Text style={styles.passwordLabel}>PASSWORD</Text>
+            <Pressable
+              disabled={busy}
+              onPress={() => router.push("/forgot-password" as never)}
+              style={({ pressed }) => [pressed && styles.pressed]}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </Pressable>
+          </View>
+
           <TextInput
             value={password}
             onChangeText={setPassword}
@@ -209,6 +260,28 @@ export default function LoginScreen() {
               <Text style={styles.primaryButtonText}>Sign in</Text>
             )}
           </Pressable>
+
+          <Pressable
+            disabled={busy}
+            onPress={() => void handleMagicLink()}
+            style={({ pressed }) => [
+              styles.magicButton,
+              busy && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            {loadingAction === "magic" ? (
+              <ActivityIndicator color="#7dd3fc" />
+            ) : (
+              <Text style={styles.magicButtonText}>Email me a secure sign-in link</Text>
+            )}
+          </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>NEW USER</Text>
+            <View style={styles.divider} />
+          </View>
 
           <Pressable
             disabled={busy}
@@ -304,6 +377,24 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2,
   },
+  passwordHeader: {
+    marginTop: 24,
+    marginBottom: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  passwordLabel: {
+    color: "#71717a",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  forgotText: {
+    color: "#7dd3fc",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   input: {
     width: "100%",
     minHeight: 54,
@@ -355,6 +446,41 @@ const styles = StyleSheet.create({
     color: "#6ee7b7",
     fontSize: 16,
     fontWeight: "900",
+  },
+  magicButton: {
+    minHeight: 55,
+    marginTop: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#0369a1",
+    borderRadius: 16,
+    backgroundColor: "#082f49",
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+  },
+  magicButtonText: {
+    color: "#bae6fd",
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  dividerRow: {
+    marginTop: 22,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#27272a",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: "#71717a",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 2,
   },
   secondaryButton: {
     minHeight: 55,
