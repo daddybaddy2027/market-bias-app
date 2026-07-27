@@ -31,6 +31,8 @@ export type UserProfile = {
   subscription_status: SubscriptionStatus;
   subscription_expires_at: string | null;
   provider_customer_id: string | null;
+  models_access?: boolean | null;
+  outlook_access?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -43,6 +45,8 @@ type AuthContextValue = {
   profile: UserProfile | null;
   isAuthenticated: boolean;
   isPro: boolean;
+  hasModelsAccess: boolean;
+  hasOutlookAccess: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -52,14 +56,10 @@ const AuthContext =
     null
   );
 
-function profileHasProAccess(
+function profileSubscriptionIsActive(
   profile: UserProfile | null
 ) {
   if (!profile) {
-    return false;
-  }
-
-  if (profile.plan !== "pro") {
     return false;
   }
 
@@ -83,6 +83,43 @@ function profileHasProAccess(
     Number.isFinite(expiresAt) &&
     expiresAt > Date.now()
   );
+}
+
+function legacyProfileHasProAccess(
+  profile: UserProfile | null
+) {
+  return Boolean(
+    profile?.plan === "pro" &&
+      profileSubscriptionIsActive(profile)
+  );
+}
+
+function profileHasModelsAccess(
+  profile: UserProfile | null
+) {
+  if (!profileSubscriptionIsActive(profile)) {
+    return false;
+  }
+
+  if (typeof profile?.models_access === "boolean") {
+    return profile.models_access;
+  }
+
+  return legacyProfileHasProAccess(profile);
+}
+
+function profileHasOutlookAccess(
+  profile: UserProfile | null
+) {
+  if (!profileSubscriptionIsActive(profile)) {
+    return false;
+  }
+
+  if (typeof profile?.outlook_access === "boolean") {
+    return profile.outlook_access;
+  }
+
+  return legacyProfileHasProAccess(profile);
 }
 
 export function AuthProvider({
@@ -116,18 +153,7 @@ export function AuthProvider({
       const { data, error } =
         await supabase
           .from("profiles")
-          .select(
-            [
-              "user_id",
-              "email",
-              "plan",
-              "subscription_status",
-              "subscription_expires_at",
-              "provider_customer_id",
-              "created_at",
-              "updated_at",
-            ].join(",")
-          )
+          .select("*")
           .eq("user_id", userId)
           .maybeSingle();
 
@@ -217,7 +243,6 @@ export function AuthProvider({
           setSession(
             nextSession ?? null
           );
-
           setInitializing(false);
         }
       );
@@ -236,20 +261,28 @@ export function AuthProvider({
 
   const value =
     useMemo<AuthContextValue>(
-      () => ({
-        initializing,
-        profileLoading,
-        session,
-        user:
-          session?.user ?? null,
-        profile,
-        isAuthenticated:
-          Boolean(session?.user),
-        isPro:
-          profileHasProAccess(profile),
-        refreshProfile,
-        signOut,
-      }),
+      () => {
+        const hasModelsAccess =
+          profileHasModelsAccess(profile);
+        const hasOutlookAccess =
+          profileHasOutlookAccess(profile);
+
+        return {
+          initializing,
+          profileLoading,
+          session,
+          user:
+            session?.user ?? null,
+          profile,
+          isAuthenticated:
+            Boolean(session?.user),
+          isPro: hasModelsAccess,
+          hasModelsAccess,
+          hasOutlookAccess,
+          refreshProfile,
+          signOut,
+        };
+      },
       [
         initializing,
         profileLoading,
@@ -279,4 +312,3 @@ export function useAuth() {
 
   return value;
 }
-
