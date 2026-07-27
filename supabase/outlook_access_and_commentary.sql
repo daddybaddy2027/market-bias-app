@@ -1,5 +1,5 @@
 -- AI Market Expert: Technical and Fundamental Outlook
--- Run this file in Supabase SQL Editor before connecting the Outlook screen to the database.
+-- Safe to run more than once in Supabase SQL Editor.
 
 alter table public.profiles
   add column if not exists models_access boolean,
@@ -45,6 +45,9 @@ create table if not exists public.macro_commentary (
   commentary_type text not null default 'weekly_outlook',
   access_level text not null default 'premium',
   published boolean not null default false,
+  chart_image_path text,
+  chart_image_alt text,
+  chart_image_caption text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint macro_commentary_access_level_check
@@ -61,6 +64,12 @@ create table if not exists public.macro_commentary (
     )
 );
 
+-- Adds chart support when the table was created by an earlier migration.
+alter table public.macro_commentary
+  add column if not exists chart_image_path text,
+  add column if not exists chart_image_alt text,
+  add column if not exists chart_image_caption text;
+
 create index if not exists macro_commentary_published_at_idx
   on public.macro_commentary(published_at desc);
 
@@ -69,8 +78,8 @@ create index if not exists macro_commentary_published_idx
 
 alter table public.macro_commentary enable row level security;
 
--- Remove the unsafe policy that allowed every visitor to select every column
--- from a published premium row.
+-- Remove the earlier unsafe policy that allowed every visitor to select every
+-- column from a published premium row.
 drop policy if exists "Published outlook previews are public"
   on public.macro_commentary;
 
@@ -97,12 +106,12 @@ create policy "Outlook subscribers can read published commentary"
     )
   );
 
--- Visitors never receive table-level access to premium body fields.
 revoke all on table public.macro_commentary from anon;
 revoke all on table public.macro_commentary from authenticated;
 grant select on table public.macro_commentary to authenticated;
 
--- Public-safe view containing metadata and preview sentences only.
+-- Public-safe view. It intentionally exposes metadata and two preview
+-- sentences, but none of the premium body fields or private image paths.
 drop view if exists public.macro_commentary_previews;
 
 create view public.macro_commentary_previews
@@ -125,6 +134,34 @@ grant select on public.macro_commentary_previews to authenticated;
 
 comment on view public.macro_commentary_previews is
   'Public metadata and preview sentences only. Premium body fields remain protected by macro_commentary RLS.';
+
+-- Private Storage bucket for Outlook charts.
+insert into storage.buckets (id, name, public)
+values ('outlook-media', 'outlook-media', false)
+on conflict (id) do update
+set public = false;
+
+drop policy if exists "Outlook subscribers can read outlook media"
+  on storage.objects;
+
+create policy "Outlook subscribers can read outlook media"
+  on storage.objects
+  for select
+  to authenticated
+  using (
+    bucket_id = 'outlook-media'
+    and exists (
+      select 1
+      from public.profiles p
+      where p.user_id = auth.uid()
+        and p.outlook_access = true
+        and p.subscription_status in ('active', 'trialing')
+        and (
+          p.subscription_expires_at is null
+          or p.subscription_expires_at > now()
+        )
+    )
+  );
 
 -- Manual Complete access for the owner:
 -- update public.profiles
