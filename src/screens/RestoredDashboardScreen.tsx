@@ -79,7 +79,11 @@ function CurrencyRow({
 }
 
 export default function RestoredDashboardScreen() {
-  const { isAuthenticated, isPro } = useAuth();
+  const {
+    isAuthenticated,
+    isPro,
+    hasOutlookAccess,
+  } = useAuth();
   const [market, setMarket] = useState<MarketState | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,7 +155,10 @@ export default function RestoredDashboardScreen() {
               </Text>
             </View>
             <View className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-2">
-              <Text className="text-xs font-black text-violet-200">€24.99/month</Text>
+              <Text className="text-xs font-black text-violet-200">Models €24.99</Text>
+            </View>
+            <View className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-2">
+              <Text className="text-xs font-black text-sky-200">Outlook €25</Text>
             </View>
           </View>
 
@@ -165,7 +172,7 @@ export default function RestoredDashboardScreen() {
               <Text className="font-black text-emerald-300">
                 {isAuthenticated
                   ? isPro
-                    ? "Pro account"
+                    ? "Models account"
                     : "Free account"
                   : "Sign in / Create account"}
               </Text>
@@ -176,6 +183,18 @@ export default function RestoredDashboardScreen() {
               className="rounded-2xl border border-sky-500/40 bg-sky-500/10 px-5 py-3 active:opacity-70"
             >
               <Text className="font-black text-sky-300">Macro intelligence</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/outlook" as never)}
+              className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-3 active:opacity-70"
+            >
+              <Text className="font-black text-cyan-200">
+                Technical & fundamental outlook
+              </Text>
+              <Text className="mt-1 text-xs font-bold text-cyan-200/70">
+                {hasOutlookAccess ? "Full access" : "Preview available"}
+              </Text>
             </Pressable>
 
             <Pressable
@@ -190,6 +209,35 @@ export default function RestoredDashboardScreen() {
             Market data: {formatTime(market?.marketDataTimeUTC ?? market?.generatedAt)}
           </Text>
         </View>
+
+        <Card className="mb-6 border-cyan-500/30 bg-cyan-500/10">
+          <View className="flex-row items-start justify-between">
+            <View className="flex-1 pr-4">
+              <Text className="text-xs font-black uppercase tracking-[3px] text-cyan-300">
+                New premium research
+              </Text>
+              <Text className="mt-2 text-2xl font-black text-white">
+                Technical and Fundamental Outlook
+              </Text>
+              <Text className="mt-3 text-sm leading-6 text-zinc-300">
+                Weekly market regime, currency outlooks, main drivers, important events, pair of the week, technical structure, scenarios and invalidation. The first two sentences remain public, while the complete publication and archive require Outlook access.
+              </Text>
+            </View>
+            <View className="rounded-full border border-cyan-500/40 bg-black/30 px-3 py-2">
+              <Text className="text-xs font-black text-cyan-200">
+                {hasOutlookAccess ? "OPEN" : "PREVIEW"}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => router.push("/outlook" as never)}
+            className="mt-5 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4 active:opacity-70"
+          >
+            <Text className="text-center font-black text-cyan-100">
+              Open outlook
+            </Text>
+          </Pressable>
+        </Card>
 
         <SectionTitle
           kicker="How it works"
