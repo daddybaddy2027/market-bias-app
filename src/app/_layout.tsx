@@ -21,18 +21,15 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" />
           <Stack.Screen name="macro" />
+          <Stack.Screen name="outlook" />
           <Stack.Screen name="login" />
           <Stack.Screen name="account" />
           <Stack.Screen name="pricing" />
           <Stack.Screen name="asset/[symbol]" />
         </Stack>
 
-        {Platform.OS === "web" ? (
-          <Analytics />
-        ) : null}
+        {Platform.OS === "web" ? <Analytics /> : null}
       </>
     </AuthProvider>
   );
 }
-
-
