@@ -1,10 +1,11 @@
 export type AccessTier = "Free" | "Pro";
-export type ModelKind = "direction" | "range" | "hybrid";
+export type ModelKind = "direction" | "consensus_direction" | "hybrid" | "range";
 export type PerformanceSource =
   | "verified_live"
+  | "strict_replay"
+  | "collecting"
   | "walk_forward_evaluation"
-  | "range_history"
-  | "collecting";
+  | "range_history";
 
 export type PerformanceStat = {
   source: PerformanceSource;
@@ -12,9 +13,10 @@ export type PerformanceStat = {
   accuracy?: number;
   n?: number;
   hits?: number;
+  totalSignedPips?: number;
   averageSignedPips?: number;
-  profitFactor?: number;
   expectancyPips?: number;
+  profitFactor?: number;
   maxDrawdownPips?: number;
   note?: string;
   period?: string;
@@ -25,6 +27,7 @@ export type IndependentStat = {
   n: number;
   hits: number;
   label: string;
+  totalSignedPips?: number;
 };
 
 export type ModelDefinition = {
@@ -40,7 +43,7 @@ export type ModelDefinition = {
   family: string;
   group?: string;
   purpose: string;
-  status: "production" | "live_verification" | "range" | "candidate";
+  status: "production" | "pilot" | "live_verification" | "range" | "candidate";
   performance: PerformanceStat;
   independent?: IndependentStat;
   secondaryPerformance?: PerformanceStat[];
@@ -49,172 +52,6 @@ export type ModelDefinition = {
 export const MODEL_CATALOG: ModelDefinition[] = [
   {
     order: 1,
-    modelKey: "EURUSD_3H_PROD_V1",
-    aliases: ["EURUSD_3H_PROD_V1", "PROD_V1"],
-    asset: "EURUSD",
-    horizonH: 3,
-    displayName: "EURUSD 3h Production Direction",
-    shortName: "EURUSD 3h",
-    kind: "direction",
-    tier: "Pro",
-    family: "prod_v1",
-    purpose: "Short-horizon directional model with verified live history.",
-    status: "production",
-    performance: {
-      source: "verified_live",
-      label: "Verified live accuracy",
-      accuracy: 0.714,
-      n: 21,
-      hits: 15,
-      period: "13–15 Jul 2026",
-      note: "Twenty-one ordinary live signals from the stored production history.",
-    },
-    independent: {
-      accuracy: 0.8,
-      n: 10,
-      hits: 8,
-      label: "Independent non-overlapping sample",
-    },
-  },
-  {
-    order: 2,
-    modelKey: "USDJPY_6H_V3_STRICT",
-    aliases: ["USDJPY_6H_V3_STRICT", "USDJPY_6H_V3"],
-    asset: "USDJPY",
-    horizonH: 6,
-    displayName: "USDJPY 6h V3 Direction",
-    shortName: "USDJPY 6h",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "Cross-asset USDJPY direction model under live verification.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.7563,
-      n: 238,
-      expectancyPips: 28.52,
-      profitFactor: 6.46,
-      note: "Purged out-of-sample walk-forward evaluation. Not live accuracy.",
-    },
-  },
-  {
-    order: 3,
-    modelKey: "USDJPY_12H_MLP_WIDE",
-    aliases: ["USDJPY_12H_MLP_WIDE", "USDJPY_12H_MLP_G1_WIDE_C6"],
-    asset: "USDJPY",
-    horizonH: 12,
-    displayName: "USDJPY 12h MLP Range",
-    shortName: "USDJPY 12h Range",
-    kind: "range",
-    tier: "Pro",
-    family: "mlp_live_v1",
-    group: "mlp_live_v1",
-    purpose: "Wide probabilistic range model for USDJPY.",
-    status: "range",
-    performance: {
-      source: "range_history",
-      label: "Range-path accuracy",
-      accuracy: 0.857,
-      n: 35,
-      note: "Stored model range-history sample.",
-    },
-  },
-  {
-    order: 4,
-    modelKey: "GBPJPY_12H_LEGACY",
-    aliases: ["GBPJPY_12H_LEGACY", "LEGACY_JPY_12H"],
-    asset: "GBPJPY",
-    horizonH: 12,
-    displayName: "GBPJPY 12h Broad Range",
-    shortName: "GBPJPY 12h Range",
-    kind: "range",
-    tier: "Pro",
-    family: "legacy_jpy_12h",
-    purpose: "Broad 12-hour range model with long verified path history.",
-    status: "range",
-    performance: {
-      source: "range_history",
-      label: "Range-path accuracy",
-      accuracy: 0.933,
-      n: 164,
-      note: "Verified stored range-path history.",
-    },
-  },
-  {
-    order: 5,
-    modelKey: "EURUSD_12H_FINAL_APP_V2",
-    aliases: ["EURUSD_12H_FINAL_APP_V2"],
-    asset: "EURUSD",
-    horizonH: 12,
-    displayName: "EURUSD 12h Final V2",
-    shortName: "EURUSD 12h V2",
-    kind: "direction",
-    tier: "Pro",
-    family: "clean_pro_final_app_v2",
-    purpose: "Selective EURUSD 12-hour direction model.",
-    status: "production",
-    performance: {
-      source: "verified_live",
-      label: "Verified live accuracy",
-      accuracy: 0.60000000,
-      n: 20,
-      hits: 12,
-      averageSignedPips: 6.88,
-      period: "21–22 Jul 2026",
-      note: "Stored live prediction history using the current production threshold.",
-    },
-    independent: {
-      accuracy: 0.50000000,
-      n: 2,
-      hits: 1,
-      label: "Independent non-overlapping sample",
-    },
-  },
-  {
-    order: 6,
-    modelKey: "EURUSD_12H_MLP_COMBINED",
-    aliases: [
-      "EURUSD_12H_MLP_COMBINED",
-      "EURUSD_12H_MLP_WIDE",
-      "EURUSD_12H_MLP_CONS",
-      "EURUSD_12H_MLP_G1_WIDE_C6",
-      "EURUSD_12H_MLP_G2_CONS_C6",
-    ],
-    asset: "EURUSD",
-    horizonH: 12,
-    displayName: "EURUSD 12h MLP Wide / Conservative",
-    shortName: "EURUSD 12h MLP",
-    kind: "hybrid",
-    tier: "Pro",
-    family: "mlp_live_v1",
-    group: "mlp_live_v1",
-    purpose: "Two complementary MLP variants shown as one model family.",
-    status: "candidate",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation summary",
-      note: "Wide and conservative variants remain separately tracked in history.",
-    },
-    secondaryPerformance: [
-      {
-        source: "walk_forward_evaluation",
-        label: "Wide evaluation accuracy",
-        accuracy: 0.81,
-        n: 21,
-      },
-      {
-        source: "walk_forward_evaluation",
-        label: "Conservative evaluation accuracy",
-        accuracy: 0.7,
-        n: 20,
-      },
-    ],
-  },
-  {
-    order: 7,
     modelKey: "GBPUSD_12H_FINAL_APP_V2",
     aliases: ["GBPUSD_12H_FINAL_APP_V2"],
     asset: "GBPUSD",
@@ -224,168 +61,195 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     kind: "direction",
     tier: "Free",
     family: "clean_pro_final_app_v2",
-    purpose: "Selective GBPUSD 12-hour direction model.",
-    status: "candidate",
+    purpose: "Selective 12-hour GBPUSD directional bias with live production history.",
+    status: "production",
+    performance: {
+      source: "strict_replay",
+      label: "Strict replay accuracy",
+      accuracy: 0.6086956522,
+      n: 23,
+      hits: 14,
+      totalSignedPips: 200.1,
+      note: "Threshold-approved session signals. Forecast performance remains separate from the +40 pip partial-profit and break-even trade-management result.",
+    },
+    independent: {
+      accuracy: 0.625,
+      n: 8,
+      hits: 5,
+      totalSignedPips: 66.1,
+      label: "Independent signal episodes",
+    },
+  },
+  {
+    order: 2,
+    modelKey: "EURUSD_3H_PROD_V1",
+    aliases: ["EURUSD_3H_PROD_V1", "PROD_V1"],
+    asset: "EURUSD",
+    horizonH: 3,
+    displayName: "EURUSD 3h Production Direction",
+    shortName: "EURUSD 3h",
+    kind: "direction",
+    tier: "Pro",
+    family: "prod_v1",
+    purpose: "Short-horizon EURUSD directional model retained from the verified production set.",
+    status: "production",
     performance: {
       source: "verified_live",
       label: "Verified live accuracy",
-      accuracy: 0.83333333,
-      n: 18,
+      accuracy: 0.714,
+      n: 21,
       hits: 15,
-      averageSignedPips: 22.36,
-      period: "21–22 Jul 2026",
-      note: "Stored live prediction history using the current production threshold.",
+      period: "13–15 Jul 2026",
+      note: "Stored production history. The 0.65 threshold is now part of the frozen production contract.",
     },
     independent: {
-      accuracy: 1.00000000,
-      n: 3,
+      accuracy: 0.8,
+      n: 10,
+      hits: 8,
+      label: "Independent signal episodes",
+    },
+  },
+  {
+    order: 3,
+    modelKey: "EURUSD_6H_FINAL_APP_V2",
+    aliases: ["EURUSD_6H_FINAL_APP_V2"],
+    asset: "EURUSD",
+    horizonH: 6,
+    displayName: "EURUSD 6h Final V2",
+    shortName: "EURUSD 6h",
+    kind: "direction",
+    tier: "Pro",
+    family: "clean_pro_final_app_v2",
+    purpose: "Medium-horizon EURUSD directional model selected by the strict no-leak replay.",
+    status: "production",
+    performance: {
+      source: "strict_replay",
+      label: "Strict replay accuracy",
+      accuracy: 0.8333333333,
+      n: 24,
+      hits: 20,
+      totalSignedPips: 218.8,
+      note: "Session-gated threshold-approved signals using the frozen prob_up rule at 0.51.",
+    },
+    independent: {
+      accuracy: 0.75,
+      n: 12,
+      hits: 9,
+      totalSignedPips: 57.6,
+      label: "Independent signal episodes",
+    },
+  },
+  {
+    order: 4,
+    modelKey: "EURUSD_12H_CONSENSUS",
+    aliases: [
+      "EURUSD_12H_CONSENSUS",
+      "EURUSD_12H_FINAL_APP_V2",
+      "EURUSD_12H_MLP_G2_CONS_C6",
+      "EURUSD_12H_MLP_G1_WIDE_C6",
+    ],
+    asset: "EURUSD",
+    horizonH: 12,
+    displayName: "EURUSD 12h Model Consensus",
+    shortName: "EURUSD 12h Consensus",
+    kind: "consensus_direction",
+    tier: "Pro",
+    family: "production_consensus_v2",
+    group: "eurusd_12h_consensus",
+    purpose: "A public signal appears only when at least two of three frozen EURUSD 12-hour engines agree.",
+    status: "production",
+    performance: {
+      source: "collecting",
+      label: "Consensus live validation",
+      note: "Consensus episodes are tracked from launch. Component replay results are shown separately and are not presented as one combined accuracy figure.",
+    },
+    secondaryPerformance: [
+      {
+        source: "strict_replay",
+        label: "Final V2 component",
+        accuracy: 1,
+        n: 11,
+        hits: 11,
+        totalSignedPips: 266.2,
+      },
+      {
+        source: "strict_replay",
+        label: "MLP Conservative component",
+        accuracy: 1,
+        n: 10,
+        hits: 10,
+        totalSignedPips: 265.6,
+      },
+      {
+        source: "strict_replay",
+        label: "MLP Wide component",
+        accuracy: 0.875,
+        n: 8,
+        hits: 7,
+        totalSignedPips: 183.7,
+      },
+    ],
+  },
+  {
+    order: 5,
+    modelKey: "AUDUSD_12H_MLP_DIRECTION",
+    aliases: ["AUDUSD_12H_MLP_DIRECTION", "AUDUSD_12H_MLP_G0_CONS_C6"],
+    asset: "AUDUSD",
+    horizonH: 12,
+    displayName: "AUDUSD 12h MLP Direction",
+    shortName: "AUDUSD 12h",
+    kind: "direction",
+    tier: "Pro",
+    family: "mlp_live_v1",
+    group: "mlp_live_v1",
+    purpose: "Selective AUDUSD 12-hour directional engine using the frozen 204-feature schema.",
+    status: "pilot",
+    performance: {
+      source: "strict_replay",
+      label: "Strict replay accuracy",
+      accuracy: 0.6875,
+      n: 16,
+      hits: 11,
+      totalSignedPips: 143.5,
+      note: "One production product is shown. The duplicate Wide/Conservative directional output is not counted as a second model.",
+    },
+    independent: {
+      accuracy: 0.5,
+      n: 6,
       hits: 3,
-      label: "Independent non-overlapping sample",
+      totalSignedPips: 56.6,
+      label: "Independent signal episodes",
     },
   },
   {
-    order: 8,
-    modelKey: "EURUSD_3H_V3_STRICT",
-    aliases: ["EURUSD_3H_V3_STRICT", "EURUSD_3H_V3"],
-    asset: "EURUSD",
-    horizonH: 3,
-    displayName: "EURUSD 3h V3 Direction",
-    shortName: "EURUSD 3h V3",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "V3 ensemble with separate long and short experts.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.7474,
-      n: 293,
-      expectancyPips: 13.82,
-      profitFactor: 4.48,
-      maxDrawdownPips: -122.45,
-      note: "Purged out-of-sample walk-forward evaluation. Not live accuracy.",
-    },
-  },
-  {
-    order: 9,
-    modelKey: "EURUSD_6H_V3_STRICT",
-    aliases: ["EURUSD_6H_V3_STRICT", "EURUSD_6H_V3"],
-    asset: "EURUSD",
-    horizonH: 6,
-    displayName: "EURUSD 6h V3 Direction",
-    shortName: "EURUSD 6h V3",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "Medium-horizon EURUSD cross-asset direction model.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.7237,
-      n: 76,
-      expectancyPips: 18.85,
-      profitFactor: 4.24,
-      note: "Purged out-of-sample walk-forward evaluation. Not live accuracy.",
-    },
-  },
-  {
-    order: 10,
-    modelKey: "GBPUSD_6H_V3_STRICT",
-    aliases: ["GBPUSD_6H_V3_STRICT", "GBPUSD_6H_V3"],
-    asset: "GBPUSD",
-    horizonH: 6,
-    displayName: "GBPUSD 6h V3 Direction",
-    shortName: "GBPUSD 6h V3",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "Selective GBPUSD V3 direction model.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.7692,
-      n: 52,
-      expectancyPips: 29.78,
-      profitFactor: 5.57,
-      note: "Purged out-of-sample walk-forward evaluation. Smaller signal sample.",
-    },
-  },
-  {
-    order: 11,
-    modelKey: "USDJPY_12H_V3_STRICT",
-    aliases: ["USDJPY_12H_V3_STRICT", "USDJPY_12H_V3"],
+    order: 6,
+    modelKey: "USDJPY_12H_MLP_DIRECTION_RANGE",
+    aliases: ["USDJPY_12H_MLP_DIRECTION_RANGE", "USDJPY_12H_MLP_G1_WIDE_C6", "USDJPY_12H_MLP_WIDE"],
     asset: "USDJPY",
     horizonH: 12,
-    displayName: "USDJPY 12h V3 Direction",
-    shortName: "USDJPY 12h V3",
-    kind: "direction",
+    displayName: "USDJPY 12h MLP Direction & Range",
+    shortName: "USDJPY 12h",
+    kind: "hybrid",
     tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "Longer-horizon USDJPY V3 direction model.",
-    status: "live_verification",
+    family: "mlp_live_v1",
+    group: "mlp_live_v1",
+    purpose: "Selective USDJPY direction with its genuine model range retained when the backend supplies one.",
+    status: "pilot",
     performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.7867,
-      n: 75,
-      expectancyPips: 37.9,
-      profitFactor: 6.39,
-      note: "Purged out-of-sample walk-forward evaluation. Not live accuracy.",
+      source: "strict_replay",
+      label: "Strict replay accuracy",
+      accuracy: 0.5625,
+      n: 16,
+      hits: 9,
+      totalSignedPips: 115.9,
+      note: "The direction and range are shown together. No synthetic path or invented target is drawn.",
     },
-  },
-  {
-    order: 12,
-    modelKey: "AUDUSD_6H_V3_STRICT",
-    aliases: ["AUDUSD_6H_V3_STRICT", "AUDUSD_6H_V3"],
-    asset: "AUDUSD",
-    horizonH: 6,
-    displayName: "AUDUSD 6h V3 Direction",
-    shortName: "AUDUSD 6h V3",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "AUDUSD V3 ensemble with balanced long and short experts.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.709,
-      n: 134,
-      expectancyPips: 12.28,
-      profitFactor: 3.85,
-      note: "Purged out-of-sample walk-forward evaluation. Not live accuracy.",
-    },
-  },
-  {
-    order: 13,
-    modelKey: "XAUUSD_6H_V3_STRICT",
-    aliases: ["XAUUSD_6H_V3_STRICT", "XAUUSD_6H_V3"],
-    asset: "XAUUSD",
-    horizonH: 6,
-    displayName: "XAUUSD 6h V3 Direction",
-    shortName: "XAUUSD 6h V3",
-    kind: "direction",
-    tier: "Pro",
-    family: "v3_strict",
-    group: "v3_multi_asset_v1",
-    purpose: "Gold V3 directional model with cross-asset rates and equity context.",
-    status: "live_verification",
-    performance: {
-      source: "walk_forward_evaluation",
-      label: "Evaluation accuracy",
-      accuracy: 0.681,
-      n: 116,
-      expectancyPips: 110.33,
-      profitFactor: 3.31,
-      note: "Gold-point scale differs from FX pips. Evaluation is not live performance.",
+    independent: {
+      accuracy: 0.6666666667,
+      n: 6,
+      hits: 4,
+      totalSignedPips: 58.2,
+      label: "Independent signal episodes",
     },
   },
 ];
@@ -407,6 +271,7 @@ export function assetModelCandidates(asset: any): string[] {
   const values = [
     asset?.model_key,
     asset?.model_id,
+    asset?.product_key,
     asset?.model_family,
     asset?.model_group,
     `${symbol}_${horizon}H_${modelSlug(asset?.model_family ?? asset?.source)}`,
@@ -417,9 +282,6 @@ export function assetModelCandidates(asset: any): string[] {
   }
   if (asset?.source === "final_app_v2" || asset?.model_family === "clean_pro_final_app_v2") {
     values.push(`${symbol}_${horizon}H_FINAL_APP_V2`);
-  }
-  if (asset?.source === "legacy_jpy_12h" || asset?.model_family === "legacy_jpy_12h") {
-    values.push(`${symbol}_${horizon}H_LEGACY`);
   }
 
   return values.map(modelSlug).filter(Boolean);
@@ -435,8 +297,7 @@ export function findAssetForModel(model: ModelDefinition, assets: any[]) {
   return assets.find((asset) => {
     const symbol = String(asset?.asset ?? asset?.symbol ?? "").toUpperCase();
     const horizon = Number(asset?.horizon_h ?? 0);
-    const family = String(asset?.model_family ?? asset?.source ?? "").toLowerCase();
-    return symbol === model.asset && horizon === model.horizonH && family === model.family.toLowerCase();
+    return symbol === model.asset && horizon === model.horizonH;
   });
 }
 
