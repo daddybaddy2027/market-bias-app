@@ -54,14 +54,17 @@ Write-Host "Connecting to PayPal $Environment..." -ForegroundColor Cyan
 $basicBytes = [Text.Encoding]::ASCII.GetBytes("${ClientId}:${ClientSecret}")
 $basicAuth = [Convert]::ToBase64String($basicBytes)
 
-$tokenResponse = Invoke-RestMethod \
-  -Method Post \
-  -Uri "$baseUrl/v1/oauth2/token" \
-  -Headers @{ Authorization = "Basic $basicAuth" } \
-  -ContentType "application/x-www-form-urlencoded" \
-  -Body "grant_type=client_credentials"
+$tokenParams = @{
+  Method = "Post"
+  Uri = "$baseUrl/v1/oauth2/token"
+  Headers = @{ Authorization = "Basic $basicAuth" }
+  ContentType = "application/x-www-form-urlencoded"
+  Body = "grant_type=client_credentials"
+}
 
+$tokenResponse = Invoke-RestMethod @tokenParams
 $accessToken = [string]$tokenResponse.access_token
+
 if ([string]::IsNullOrWhiteSpace($accessToken)) {
   throw "PayPal did not return an OAuth access token."
 }
@@ -72,19 +75,20 @@ function Invoke-PayPalPost {
     [Parameter(Mandatory = $true)][hashtable]$Body
   )
 
-  $json = $Body | ConvertTo-Json -Depth 20
-
-  return Invoke-RestMethod \
-    -Method Post \
-    -Uri "$baseUrl$Path" \
-    -Headers @{
+  $requestParams = @{
+    Method = "Post"
+    Uri = "$baseUrl$Path"
+    Headers = @{
       Authorization = "Bearer $accessToken"
       Accept = "application/json"
       Prefer = "return=representation"
       "PayPal-Request-Id" = New-RequestId
-    } \
-    -ContentType "application/json" \
-    -Body $json
+    }
+    ContentType = "application/json"
+    Body = ($Body | ConvertTo-Json -Depth 20)
+  }
+
+  return Invoke-RestMethod @requestParams
 }
 
 $productId = $ExistingProductId.Trim()
@@ -92,16 +96,15 @@ $productId = $ExistingProductId.Trim()
 if ([string]::IsNullOrWhiteSpace($productId)) {
   Write-Host "Creating AI Market Expert catalog product..." -ForegroundColor Cyan
 
-  $product = Invoke-PayPalPost \
-    -Path "/v1/catalogs/products" \
-    -Body @{
-      name = "AI Market Expert"
-      description = "Cross-asset FX models and technical and fundamental market outlook subscriptions."
-      type = "SERVICE"
-      category = "SOFTWARE"
-      home_url = "https://market-bias-app-gamma.vercel.app"
-    }
+  $productBody = @{
+    name = "AI Market Expert"
+    description = "Cross-asset FX models and technical and fundamental market outlook subscriptions."
+    type = "SERVICE"
+    category = "SOFTWARE"
+    home_url = "https://market-bias-app-gamma.vercel.app"
+  }
 
+  $product = Invoke-PayPalPost -Path "/v1/catalogs/products" -Body $productBody
   $productId = [string]$product.id
 }
 
@@ -118,41 +121,41 @@ function New-MonthlyPlan {
 
   Write-Host "Creating $Name at EUR $Price/month..." -ForegroundColor Cyan
 
-  $plan = Invoke-PayPalPost \
-    -Path "/v1/billing/plans" \
-    -Body @{
-      product_id = $productId
-      name = $Name
-      description = $Description
-      status = "ACTIVE"
-      billing_cycles = @(
-        @{
-          frequency = @{
-            interval_unit = "MONTH"
-            interval_count = 1
-          }
-          tenure_type = "REGULAR"
-          sequence = 1
-          total_cycles = 0
-          pricing_scheme = @{
-            fixed_price = @{
-              value = $Price
-              currency_code = "EUR"
-            }
+  $planBody = @{
+    product_id = $productId
+    name = $Name
+    description = $Description
+    status = "ACTIVE"
+    billing_cycles = @(
+      @{
+        frequency = @{
+          interval_unit = "MONTH"
+          interval_count = 1
+        }
+        tenure_type = "REGULAR"
+        sequence = 1
+        total_cycles = 0
+        pricing_scheme = @{
+          fixed_price = @{
+            value = $Price
+            currency_code = "EUR"
           }
         }
-      )
-      payment_preferences = @{
-        auto_bill_outstanding = $true
-        setup_fee = @{
-          value = "0.00"
-          currency_code = "EUR"
-        }
-        setup_fee_failure_action = "CONTINUE"
-        payment_failure_threshold = 3
       }
-      quantity_supported = $false
+    )
+    payment_preferences = @{
+      auto_bill_outstanding = $true
+      setup_fee = @{
+        value = "0.00"
+        currency_code = "EUR"
+      }
+      setup_fee_failure_action = "CONTINUE"
+      payment_failure_threshold = 3
     }
+    quantity_supported = $false
+  }
+
+  $plan = Invoke-PayPalPost -Path "/v1/billing/plans" -Body $planBody
 
   if ([string]::IsNullOrWhiteSpace([string]$plan.id)) {
     throw "PayPal did not return a plan ID for $Name."
@@ -165,19 +168,19 @@ function New-MonthlyPlan {
   return $plan
 }
 
-$modelsPlan = New-MonthlyPlan \
-  -Name "AI Market Expert Models" \
-  -Description "Full AI model board, current predictions, model history and transparent performance tracking." \
+$modelsPlan = New-MonthlyPlan `
+  -Name "AI Market Expert Models" `
+  -Description "Full AI model board, current predictions, model history and transparent performance tracking." `
   -Price "24.99"
 
-$outlookPlan = New-MonthlyPlan \
-  -Name "AI Market Expert Outlook" \
-  -Description "Technical and fundamental market outlook, scenarios, invalidation and publication archive." \
+$outlookPlan = New-MonthlyPlan `
+  -Name "AI Market Expert Outlook" `
+  -Description "Technical and fundamental market outlook, scenarios, invalidation and publication archive." `
   -Price "25.00"
 
-$completePlan = New-MonthlyPlan \
-  -Name "AI Market Expert Complete" \
-  -Description "Full AI model access plus the complete technical and fundamental outlook." \
+$completePlan = New-MonthlyPlan `
+  -Name "AI Market Expert Complete" `
+  -Description "Full AI model access plus the complete technical and fundamental outlook." `
   -Price "50.00"
 
 $result = [ordered]@{
@@ -191,22 +194,22 @@ $result = [ordered]@{
 
 $result | ConvertTo-Json -Depth 5 | Set-Content -Path $OutputPath -Encoding UTF8
 
-Write-Host "" 
+Write-Host ""
 Write-Host "PayPal subscription plans created successfully." -ForegroundColor Green
 Write-Host "Product ID:  $productId"
 Write-Host "Models ID:   $($modelsPlan.id)"
 Write-Host "Outlook ID:  $($outlookPlan.id)"
 Write-Host "Complete ID: $($completePlan.id)"
-Write-Host "" 
+Write-Host ""
 Write-Host "Saved non-secret IDs to: $OutputPath" -ForegroundColor Green
 Write-Host "Do not commit that generated file." -ForegroundColor Yellow
-Write-Host "" 
+Write-Host ""
 Write-Host "Vercel variables:" -ForegroundColor Cyan
 Write-Host "EXPO_PUBLIC_PAYPAL_CLIENT_ID=$ClientId"
 Write-Host "EXPO_PUBLIC_PAYPAL_MODELS_PLAN_ID=$($modelsPlan.id)"
 Write-Host "EXPO_PUBLIC_PAYPAL_OUTLOOK_PLAN_ID=$($outlookPlan.id)"
 Write-Host "EXPO_PUBLIC_PAYPAL_COMPLETE_PLAN_ID=$($completePlan.id)"
-Write-Host "" 
+Write-Host ""
 Write-Host "Supabase Edge Function secrets:" -ForegroundColor Cyan
 Write-Host "PAYPAL_ENV=$Environment"
 Write-Host "PAYPAL_CLIENT_ID=$ClientId"
