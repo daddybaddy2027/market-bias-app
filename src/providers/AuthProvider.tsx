@@ -78,19 +78,31 @@ function legacyProfileHasProAccess(profile: UserProfile | null) {
   );
 }
 
+function legacyPayPalPlanIsModels(profile: UserProfile | null) {
+  if (profile?.subscription_provider !== "paypal") return false;
+
+  const expectedModelsPlan =
+    process.env.EXPO_PUBLIC_PAYPAL_MODELS_PLAN_ID ??
+    process.env.EXPO_PUBLIC_PAYPAL_PRO_MONTHLY_PLAN_ID ??
+    "";
+
+  return Boolean(
+    expectedModelsPlan &&
+      profile.paypal_plan_id &&
+      profile.paypal_plan_id === expectedModelsPlan
+  );
+}
+
 function profileHasModelsAccess(profile: UserProfile | null) {
   if (!profileSubscriptionIsActive(profile)) return false;
 
   if (profile?.models_access === true) return true;
 
-  if (
-    profile?.models_access === false &&
-    profile.subscription_provider === "paypal"
-  ) {
-    return legacyProfileHasProAccess(profile);
+  if (profile?.models_access === false) {
+    // Compatibility only for an existing single-plan Models subscriber.
+    // An explicit false on an Outlook plan must remain false.
+    return legacyPayPalPlanIsModels(profile) && legacyProfileHasProAccess(profile);
   }
-
-  if (profile?.models_access === false) return false;
 
   return legacyProfileHasProAccess(profile);
 }
