@@ -35,6 +35,9 @@ yarn-error.*
 .env.local
 .env*.local
 
+# local PayPal bootstrap output
+.paypal-*.json
+
 # typescript
 *.tsbuildinfo
 
