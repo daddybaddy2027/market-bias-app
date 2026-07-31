@@ -29,6 +29,9 @@ type FullOutlookRow = {
   chart_image_path: string | null;
   chart_image_alt: string | null;
   chart_image_caption: string | null;
+  technical_chart_image_path: string | null;
+  technical_chart_image_alt: string | null;
+  technical_chart_image_caption: string | null;
 };
 
 type PreviewOutlookRow = Pick<
@@ -50,6 +53,9 @@ export type OutlookArticle = TechnicalFundamentalOutlook & {
   chartImageUrl: string | null;
   chartImageAlt: string | null;
   chartImageCaption: string | null;
+  technicalChartImageUrl: string | null;
+  technicalChartImageAlt: string | null;
+  technicalChartImageCaption: string | null;
   previewOnly: boolean;
 };
 
@@ -89,6 +95,17 @@ function normalizePreview(value: string[] | null | undefined) {
     : [];
 }
 
+function emptyMediaFields() {
+  return {
+    chartImageUrl: null,
+    chartImageAlt: null,
+    chartImageCaption: null,
+    technicalChartImageUrl: null,
+    technicalChartImageAlt: null,
+    technicalChartImageCaption: null,
+  };
+}
+
 function mapPreviewRow(row: PreviewOutlookRow): OutlookArticle {
   return {
     id: row.id,
@@ -100,9 +117,7 @@ function mapPreviewRow(row: PreviewOutlookRow): OutlookArticle {
     sections: [],
     commentaryType: row.commentary_type,
     accessLevel: row.access_level,
-    chartImageUrl: null,
-    chartImageAlt: null,
-    chartImageCaption: null,
+    ...emptyMediaFields(),
     previewOnly: true,
   };
 }
@@ -116,7 +131,7 @@ async function getSignedChartUrl(path?: string | null) {
     .createSignedUrl(cleanPath, SIGNED_IMAGE_TTL_SECONDS);
 
   if (error) {
-    console.warn("Failed to create Outlook chart URL:", error.message);
+    console.warn(`Failed to create Outlook chart URL for ${cleanPath}:`, error.message);
     return null;
   }
 
@@ -124,6 +139,11 @@ async function getSignedChartUrl(path?: string | null) {
 }
 
 async function mapFullRow(row: FullOutlookRow): Promise<OutlookArticle> {
+  const [chartImageUrl, technicalChartImageUrl] = await Promise.all([
+    getSignedChartUrl(row.chart_image_path),
+    getSignedChartUrl(row.technical_chart_image_path),
+  ]);
+
   return {
     id: row.id,
     slug: row.slug,
@@ -134,9 +154,12 @@ async function mapFullRow(row: FullOutlookRow): Promise<OutlookArticle> {
     sections: buildSections(row),
     commentaryType: row.commentary_type,
     accessLevel: row.access_level,
-    chartImageUrl: await getSignedChartUrl(row.chart_image_path),
+    chartImageUrl,
     chartImageAlt: row.chart_image_alt,
     chartImageCaption: row.chart_image_caption,
+    technicalChartImageUrl,
+    technicalChartImageAlt: row.technical_chart_image_alt,
+    technicalChartImageCaption: row.technical_chart_image_caption,
     previewOnly: false,
   };
 }
@@ -152,9 +175,7 @@ function localFallback(): OutlookArticle[] {
       slug: item.id,
       commentaryType: "weekly_outlook",
       accessLevel: "premium",
-      chartImageUrl: null,
-      chartImageAlt: null,
-      chartImageCaption: null,
+      ...emptyMediaFields(),
       previewOnly: false,
     }));
 }
@@ -188,6 +209,9 @@ export async function fetchOutlookFeed(
             "chart_image_path",
             "chart_image_alt",
             "chart_image_caption",
+            "technical_chart_image_path",
+            "technical_chart_image_alt",
+            "technical_chart_image_caption",
           ].join(",")
         )
         .eq("published", true)
