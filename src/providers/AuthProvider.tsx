@@ -34,6 +34,7 @@ export type UserProfile = {
   paypal_plan_id?: string | null;
   models_access: boolean | null;
   outlook_access: boolean | null;
+  is_admin?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -46,6 +47,7 @@ type AuthContextValue = {
   profile: UserProfile | null;
   isAuthenticated: boolean;
   isPro: boolean;
+  isAdmin: boolean;
   hasModelsAccess: boolean;
   hasOutlookAccess: boolean;
   refreshProfile: () => Promise<void>;
@@ -76,22 +78,31 @@ function legacyProfileHasProAccess(profile: UserProfile | null) {
   );
 }
 
+function legacyPayPalPlanIsModels(profile: UserProfile | null) {
+  if (profile?.subscription_provider !== "paypal") return false;
+
+  const expectedModelsPlan =
+    process.env.EXPO_PUBLIC_PAYPAL_MODELS_PLAN_ID ??
+    process.env.EXPO_PUBLIC_PAYPAL_PRO_MONTHLY_PLAN_ID ??
+    "";
+
+  return Boolean(
+    expectedModelsPlan &&
+      profile.paypal_plan_id &&
+      profile.paypal_plan_id === expectedModelsPlan
+  );
+}
+
 function profileHasModelsAccess(profile: UserProfile | null) {
   if (!profileSubscriptionIsActive(profile)) return false;
 
   if (profile?.models_access === true) return true;
 
-  // The currently deployed PayPal webhook still writes the legacy Pro fields.
-  // Until plan-to-entitlement mapping is added, preserve Models access for that
-  // existing PayPal subscription flow only.
-  if (
-    profile?.models_access === false &&
-    profile.subscription_provider === "paypal"
-  ) {
-    return legacyProfileHasProAccess(profile);
+  if (profile?.models_access === false) {
+    // Compatibility only for an existing single-plan Models subscriber.
+    // An explicit false on an Outlook plan must remain false.
+    return legacyPayPalPlanIsModels(profile) && legacyProfileHasProAccess(profile);
   }
-
-  if (profile?.models_access === false) return false;
 
   return legacyProfileHasProAccess(profile);
 }
@@ -175,7 +186,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!mounted) return;
-
       setSession(nextSession ?? null);
       setInitializing(false);
     });
@@ -202,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       isAuthenticated: Boolean(session?.user),
       isPro: hasModelsAccess,
+      isAdmin: profile?.is_admin === true,
       hasModelsAccess,
       hasOutlookAccess,
       refreshProfile,

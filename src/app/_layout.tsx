@@ -15,13 +15,15 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             contentStyle: {
-              backgroundColor: "#000000",
+              backgroundColor: "#050505",
             },
           }}
         >
           <Stack.Screen name="index" />
           <Stack.Screen name="macro" />
+          <Stack.Screen name="performance" />
           <Stack.Screen name="outlook" />
+          <Stack.Screen name="admin-outlook" />
           <Stack.Screen name="login" />
           <Stack.Screen name="forgot-password" />
           <Stack.Screen name="update-password" />

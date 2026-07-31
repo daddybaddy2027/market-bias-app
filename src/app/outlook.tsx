@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 
+import { AppTopNav } from "../components/AppTopNav";
 import { OUTLOOK_STRUCTURE } from "../config/outlookContent";
 import { useAuth } from "../providers/AuthProvider";
 import {
@@ -33,15 +34,27 @@ function formatPublishedAt(value: string) {
   }).format(date);
 }
 
-function OutlookMeta({ outlook }: { outlook: OutlookArticle }) {
+function ChartCard({
+  label,
+  url,
+  alt,
+  caption,
+}: {
+  label: string;
+  url: string;
+  alt?: string | null;
+  caption?: string | null;
+}) {
   return (
-    <View style={styles.metaRow}>
-      <View style={styles.metaPill}>
-        <Text style={styles.metaText}>By {outlook.author}</Text>
-      </View>
-      <View style={styles.metaPill}>
-        <Text style={styles.metaText}>{formatPublishedAt(outlook.publishedAt)}</Text>
-      </View>
+    <View style={styles.chartCard}>
+      <Text style={styles.chartLabel}>{label}</Text>
+      <Image
+        source={{ uri: url }}
+        accessibilityLabel={alt ?? label}
+        resizeMode="contain"
+        style={styles.chartImage}
+      />
+      {caption ? <Text style={styles.chartCaption}>{caption}</Text> : null}
     </View>
   );
 }
@@ -49,17 +62,52 @@ function OutlookMeta({ outlook }: { outlook: OutlookArticle }) {
 function StructureList() {
   return (
     <View style={styles.structureCard}>
-      <Text style={styles.structureTitle}>What each publication can include</Text>
-      {OUTLOOK_STRUCTURE.map((item) => (
-        <View key={item} style={styles.structureRow}>
-          <Text style={styles.checkmark}>✓</Text>
-          <Text style={styles.structureText}>{item}</Text>
-        </View>
-      ))}
-      <Text style={styles.structureNote}>
-        The author may adapt the order and emphasis to the weekly calendar,
-        active market regime and the quality of the available thesis.
+      <Text style={styles.structureTitle}>Every publication can include</Text>
+      <View style={styles.structureGrid}>
+        {OUTLOOK_STRUCTURE.map((item) => (
+          <View key={item} style={styles.structureRow}>
+            <Text style={styles.checkmark}>✓</Text>
+            <Text style={styles.structureText}>{item}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function SectionCard({
+  section,
+  index,
+}: {
+  section: OutlookArticle["sections"][number];
+  index: number;
+}) {
+  const isInvalidation = section.key === "invalidation";
+  const isBase = section.key === "base_scenario";
+  const isAlternative = section.key === "alternative_scenario";
+
+  return (
+    <View
+      style={[
+        styles.sectionCard,
+        isInvalidation && styles.invalidationCard,
+        isBase && styles.baseCard,
+        isAlternative && styles.alternativeCard,
+      ]}
+    >
+      <Text
+        style={[
+          styles.sectionNumber,
+          isInvalidation && styles.invalidationAccent,
+          isBase && styles.baseAccent,
+        ]}
+      >
+        {String(index + 1).padStart(2, "0")}
       </Text>
+      <View style={styles.sectionCopy}>
+        <Text style={styles.sectionTitle}>{section.title}</Text>
+        <Text style={styles.sectionBody}>{section.body}</Text>
+      </View>
     </View>
   );
 }
@@ -69,6 +117,7 @@ export default function OutlookScreen() {
     isAuthenticated,
     hasOutlookAccess,
     profileLoading,
+    isAdmin,
   } = useAuth();
 
   const [outlooks, setOutlooks] = useState<OutlookArticle[]>([]);
@@ -87,13 +136,11 @@ export default function OutlookScreen() {
         setOutlooks(result.outlooks);
         setDatabaseBacked(result.databaseBacked);
         setWarning(result.warning);
-
-        setSelectedId((current) => {
-          if (result.outlooks.some((item) => item.id === current)) {
-            return current;
-          }
-          return result.outlooks[0]?.id ?? "";
-        });
+        setSelectedId((current) =>
+          result.outlooks.some((item) => item.id === current)
+            ? current
+            : result.outlooks[0]?.id ?? ""
+        );
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -103,17 +150,13 @@ export default function OutlookScreen() {
   );
 
   useEffect(() => {
-    if (!profileLoading) {
-      void load();
-    }
+    if (!profileLoading) void load();
   }, [load, profileLoading]);
 
   const selected = useMemo(
-    () =>
-      outlooks.find((item) => item.id === selectedId) ?? outlooks[0] ?? null,
+    () => outlooks.find((item) => item.id === selectedId) ?? outlooks[0] ?? null,
     [outlooks, selectedId]
   );
-
   const selectedIsLatest = Boolean(
     selected && outlooks[0] && selected.id === outlooks[0].id
   );
@@ -131,22 +174,16 @@ export default function OutlookScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => void load(true)}
-            tintColor="#7dd3fc"
+            tintColor="#38bdf8"
           />
         }
       >
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.backText}>← Back</Text>
-        </Pressable>
+        <AppTopNav />
 
         <View style={styles.hero}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>HUMAN MARKET CONTEXT</Text>
+              <Text style={styles.heroBadgeText}>TRADER-LED MARKET RESEARCH</Text>
             </View>
             <View style={databaseBacked ? styles.liveBadge : styles.fallbackBadge}>
               <Text style={styles.feedBadgeText}>
@@ -155,36 +192,47 @@ export default function OutlookScreen() {
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Technical and Fundamental Outlook</Text>
+          <Text style={styles.heroTitle}>Technical & Fundamental Outlook</Text>
           <Text style={styles.heroDescription}>
-            Weekly macro, sentiment and technical analysis for the main FX
-            currencies and pairs. New publications automatically become the current
-            outlook, while every earlier thesis remains available in the archive.
+            Dated market theses combining macro conditions, monetary policy, sentiment,
+            technical structure, scenarios and invalidation. Every earlier publication
+            remains available, because deleting old opinions is not analysis.
           </Text>
 
-          <View
-            style={
-              hasOutlookAccess
-                ? styles.accessActiveBanner
-                : styles.accessPreviewBanner
-            }
-          >
-            <Text
+          <View style={styles.heroActions}>
+            <View
               style={
                 hasOutlookAccess
-                  ? styles.accessActiveTitle
-                  : styles.accessPreviewTitle
+                  ? styles.accessActiveBanner
+                  : styles.accessPreviewBanner
               }
             >
-              {hasOutlookAccess
-                ? "Full Outlook access is active"
-                : "Public preview mode"}
-            </Text>
-            <Text style={styles.accessBody}>
-              {hasOutlookAccess
-                ? "You can read complete publications, technical charts and every available archived outlook."
-                : "You can read the first two sentences and inspect the full research structure before subscribing."}
-            </Text>
+              <Text
+                style={
+                  hasOutlookAccess
+                    ? styles.accessActiveTitle
+                    : styles.accessPreviewTitle
+                }
+              >
+                {hasOutlookAccess
+                  ? "Full Outlook access is active"
+                  : "Public preview mode"}
+              </Text>
+              <Text style={styles.accessBody}>
+                {hasOutlookAccess
+                  ? "Complete publications, both chart layers and the historical archive are unlocked."
+                  : "The first two sentences remain public. Complete analysis and charts require Outlook or Complete access."}
+              </Text>
+            </View>
+
+            {isAdmin ? (
+              <Pressable
+                onPress={() => router.push("/admin-outlook" as never)}
+                style={({ pressed }) => [styles.publishButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.publishButtonText}>Publish new Outlook</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -197,7 +245,7 @@ export default function OutlookScreen() {
 
         {loading ? (
           <View style={styles.loadingCard}>
-            <ActivityIndicator size="large" color="#7dd3fc" />
+            <ActivityIndicator size="large" color="#38bdf8" />
             <Text style={styles.loadingText}>Loading Outlook archive...</Text>
           </View>
         ) : selected ? (
@@ -208,6 +256,21 @@ export default function OutlookScreen() {
                   {selectedIsLatest ? "LATEST OUTLOOK" : "ARCHIVED OUTLOOK"}
                 </Text>
                 <Text style={styles.articleTitle}>{selected.title}</Text>
+                <View style={styles.metaRow}>
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaText}>By {selected.author}</Text>
+                  </View>
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaText}>
+                      {formatPublishedAt(selected.publishedAt)}
+                    </Text>
+                  </View>
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaText}>
+                      {selected.commentaryType.replace(/_/g, " ")}
+                    </Text>
+                  </View>
+                </View>
               </View>
               <View
                 style={selectedIsLatest ? styles.currentBadge : styles.archiveBadge}
@@ -218,12 +281,13 @@ export default function OutlookScreen() {
               </View>
             </View>
 
-            <OutlookMeta outlook={selected} />
-
             <View style={styles.previewBlock}>
               <Text style={styles.previewLabel}>PUBLIC PREVIEW</Text>
               {selected.preview.slice(0, 2).map((sentence, index) => (
-                <Text key={`${selected.id}-${index}`} style={styles.previewSentence}>
+                <Text
+                  key={`${selected.id}-${index}`}
+                  style={styles.previewSentence}
+                >
                   {sentence}
                 </Text>
               ))}
@@ -232,57 +296,45 @@ export default function OutlookScreen() {
             {hasOutlookAccess ? (
               <View style={styles.fullAnalysis}>
                 {selected.chartImageUrl ? (
-                  <View style={styles.chartCard}>
-                    <Text style={styles.chartLabel}>TECHNICAL CHART</Text>
-                    <Image
-                      source={{ uri: selected.chartImageUrl }}
-                      accessibilityLabel={
-                        selected.chartImageAlt ?? "Technical outlook chart"
-                      }
-                      resizeMode="contain"
-                      style={styles.chartImage}
-                    />
-                    {selected.chartImageCaption ? (
-                      <Text style={styles.chartCaption}>
-                        {selected.chartImageCaption}
-                      </Text>
-                    ) : null}
-                  </View>
+                  <ChartCard
+                    label="MACRO / FUNDAMENTAL CHART"
+                    url={selected.chartImageUrl}
+                    alt={selected.chartImageAlt}
+                    caption={selected.chartImageCaption}
+                  />
                 ) : null}
 
                 {selected.sections.map((section, index) => (
-                  <View key={section.key} style={styles.sectionCard}>
-                    <Text style={styles.sectionNumber}>
-                      {String(index + 1).padStart(2, "0")}
-                    </Text>
-                    <View style={styles.sectionCopy}>
-                      <Text style={styles.sectionTitle}>{section.title}</Text>
-                      <Text style={styles.sectionBody}>{section.body}</Text>
-                    </View>
-                  </View>
+                  <React.Fragment key={section.key}>
+                    {section.key === "technical_structure" &&
+                    selected.technicalChartImageUrl ? (
+                      <ChartCard
+                        label="TECHNICAL CHART"
+                        url={selected.technicalChartImageUrl}
+                        alt={selected.technicalChartImageAlt}
+                        caption={selected.technicalChartImageCaption}
+                      />
+                    ) : null}
+                    <SectionCard section={section} index={index} />
+                  </React.Fragment>
                 ))}
               </View>
             ) : (
               <View style={styles.lockedCard}>
                 <Text style={styles.lockedKicker}>PREMIUM OUTLOOK</Text>
-                <Text style={styles.lockedTitle}>The complete analysis is locked</Text>
+                <Text style={styles.lockedTitle}>The complete market thesis is locked.</Text>
                 <Text style={styles.lockedBody}>
-                  Full access includes the complete weekly thesis, event updates,
-                  technical structure, chart images, alternative scenarios,
-                  invalidation and the historical archive.
+                  Outlook access includes the full macro thesis, fundamental and technical
+                  charts, weekly updates, scenarios, invalidation and every archived publication.
                 </Text>
-
                 <StructureList />
-
                 <View style={styles.priceRow}>
                   <View>
                     <Text style={styles.priceLabel}>OUTLOOK ACCESS</Text>
                     <Text style={styles.price}>€25</Text>
                     <Text style={styles.pricePeriod}>per month</Text>
                   </View>
-
                   <Pressable
-                    accessibilityRole="button"
                     onPress={() =>
                       router.push((isAuthenticated ? "/pricing" : "/login") as never)
                     }
@@ -301,9 +353,9 @@ export default function OutlookScreen() {
           </View>
         ) : (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No outlook has been published yet</Text>
+            <Text style={styles.emptyTitle}>No Outlook has been published yet</Text>
             <Text style={styles.emptyBody}>
-              The first publication will appear here after review and approval.
+              The first reviewed publication will appear here.
             </Text>
           </View>
         )}
@@ -312,26 +364,24 @@ export default function OutlookScreen() {
           <Text style={styles.archiveKicker}>HISTORICAL ARCHIVE</Text>
           <Text style={styles.archiveTitle}>Previous outlooks</Text>
           <Text style={styles.archiveDescription}>
-            A new publication becomes the current outlook. Every earlier publication
-            remains available with its original date, thesis and invalidation.
+            Select any publication to inspect its original thesis, date and invalidation.
           </Text>
         </View>
 
-        {outlooks.map((outlook, index) => {
-          const isSelected = selected?.id === outlook.id;
+        <View style={styles.archiveGrid}>
+          {outlooks.map((outlook, index) => {
+            const isSelected = selected?.id === outlook.id;
 
-          return (
-            <Pressable
-              accessibilityRole="button"
-              key={outlook.id}
-              onPress={() => setSelectedId(outlook.id)}
-              style={({ pressed }) => [
-                styles.archiveItem,
-                isSelected && styles.archiveItemSelected,
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={styles.archiveItemCopy}>
+            return (
+              <Pressable
+                key={outlook.id}
+                onPress={() => setSelectedId(outlook.id)}
+                style={({ pressed }) => [
+                  styles.archiveItem,
+                  isSelected && styles.archiveItemSelected,
+                  pressed && styles.pressed,
+                ]}
+              >
                 <Text
                   style={
                     isSelected
@@ -345,11 +395,11 @@ export default function OutlookScreen() {
                 <Text style={styles.archiveItemMeta}>
                   {formatPublishedAt(outlook.publishedAt)} · {outlook.author}
                 </Text>
-              </View>
-              <Text style={styles.archiveArrow}>→</Text>
-            </Pressable>
-          );
-        })}
+                <Text style={styles.archiveArrow}>Open →</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Text style={styles.disclaimer}>
           Educational market commentary only. Not financial advice.
@@ -360,38 +410,17 @@ export default function OutlookScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    backgroundColor: "#000000",
-  },
+  page: { flex: 1, backgroundColor: "#050505" },
   scrollContent: {
     width: "100%",
-    maxWidth: 1120,
+    maxWidth: 1180,
     alignSelf: "center",
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 96,
   },
-  pressed: {
-    opacity: 0.72,
-  },
-  backButton: {
-    alignSelf: "flex-start",
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#3f3f46",
-    borderRadius: 18,
-    backgroundColor: "#09090b",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backText: {
-    color: "#d4d4d8",
-    fontWeight: "800",
-  },
-  hero: {
-    marginBottom: 26,
-  },
+  pressed: { opacity: 0.7 },
+  hero: { marginBottom: 26 },
   heroTopRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -401,214 +430,171 @@ const styles = StyleSheet.create({
   },
   heroBadge: {
     borderWidth: 1,
-    borderColor: "#38bdf8",
+    borderColor: "#0c4a6e",
     borderRadius: 999,
-    backgroundColor: "#082f49",
+    backgroundColor: "#071820",
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
   heroBadgeText: {
     color: "#7dd3fc",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 2.3,
+    letterSpacing: 2.1,
   },
   liveBadge: {
     borderWidth: 1,
-    borderColor: "#10b981",
+    borderColor: "#064e3b",
     borderRadius: 999,
-    backgroundColor: "#022c22",
+    backgroundColor: "#061713",
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
   fallbackBadge: {
     borderWidth: 1,
-    borderColor: "#f59e0b",
+    borderColor: "#92400e",
     borderRadius: 999,
-    backgroundColor: "#451a03",
+    backgroundColor: "#1c1207",
     paddingHorizontal: 13,
     paddingVertical: 7,
   },
   feedBadgeText: {
     color: "#f4f4f5",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 1.7,
+    letterSpacing: 1.5,
   },
   heroTitle: {
     marginTop: 18,
     color: "#ffffff",
-    fontSize: 40,
-    lineHeight: 48,
+    fontSize: 44,
+    lineHeight: 52,
     fontWeight: "900",
+    letterSpacing: -1.1,
   },
   heroDescription: {
-    marginTop: 14,
+    marginTop: 13,
+    maxWidth: 850,
     color: "#a1a1aa",
     fontSize: 16,
     lineHeight: 27,
   },
+  heroActions: {
+    marginTop: 19,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: 12,
+  },
   accessActiveBanner: {
-    marginTop: 20,
+    flexGrow: 1,
+    flexBasis: 500,
     borderWidth: 1,
-    borderColor: "#10b981",
+    borderColor: "#064e3b",
     borderRadius: 20,
-    backgroundColor: "#022c22",
-    padding: 17,
-  },
-  accessPreviewBanner: {
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: "#38bdf8",
-    borderRadius: 20,
-    backgroundColor: "#082f49",
-    padding: 17,
-  },
-  accessActiveTitle: {
-    color: "#6ee7b7",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  accessPreviewTitle: {
-    color: "#7dd3fc",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  accessBody: {
-    marginTop: 7,
-    color: "#d4d4d8",
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  warningCard: {
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: "#f59e0b",
-    borderRadius: 20,
-    backgroundColor: "#451a03",
+    backgroundColor: "#061713",
     padding: 16,
   },
-  warningTitle: {
-    color: "#fde68a",
-    fontSize: 15,
-    fontWeight: "900",
+  accessPreviewBanner: {
+    flexGrow: 1,
+    flexBasis: 500,
+    borderWidth: 1,
+    borderColor: "#0c4a6e",
+    borderRadius: 20,
+    backgroundColor: "#071820",
+    padding: 16,
   },
-  warningBody: {
-    marginTop: 7,
-    color: "#fef3c7",
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  loadingCard: {
-    minHeight: 220,
+  accessActiveTitle: { color: "#6ee7b7", fontSize: 15, fontWeight: "900" },
+  accessPreviewTitle: { color: "#7dd3fc", fontSize: 15, fontWeight: "900" },
+  accessBody: { marginTop: 6, color: "#a1a1aa", fontSize: 13, lineHeight: 21 },
+  publishButton: {
+    minWidth: 190,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 28,
+    borderColor: "#38bdf8",
+    borderRadius: 18,
+    backgroundColor: "#0369a1",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  publishButtonText: { color: "#ffffff", fontWeight: "900" },
+  warningCard: {
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "#92400e",
+    borderRadius: 20,
+    backgroundColor: "#1c1207",
+    padding: 16,
+  },
+  warningTitle: { color: "#fde68a", fontSize: 15, fontWeight: "900" },
+  warningBody: { marginTop: 7, color: "#fef3c7", fontSize: 13, lineHeight: 20 },
+  loadingCard: {
+    minHeight: 260,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#202026",
+    borderRadius: 27,
     backgroundColor: "#09090b",
-    padding: 22,
   },
-  loadingText: {
-    marginTop: 14,
-    color: "#a1a1aa",
-    fontWeight: "800",
-  },
+  loadingText: { marginTop: 13, color: "#a1a1aa", fontWeight: "800" },
   articleCard: {
     borderWidth: 1,
-    borderColor: "#0284c7",
-    borderRadius: 30,
+    borderColor: "#0c4a6e",
+    borderRadius: 28,
     backgroundColor: "#071018",
-    padding: 22,
+    padding: 21,
   },
   articleHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: 14,
   },
-  articleHeaderCopy: {
-    flex: 1,
-    paddingRight: 14,
-  },
-  articleKicker: {
-    color: "#7dd3fc",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 2.5,
-  },
-  articleTitle: {
-    marginTop: 10,
-    color: "#ffffff",
-    fontSize: 28,
-    lineHeight: 35,
-    fontWeight: "900",
-  },
+  articleHeaderCopy: { flex: 1 },
+  articleKicker: { color: "#7dd3fc", fontSize: 10, fontWeight: "900", letterSpacing: 2.2 },
+  articleTitle: { marginTop: 10, color: "#ffffff", fontSize: 31, lineHeight: 38, fontWeight: "900" },
   currentBadge: {
     borderWidth: 1,
-    borderColor: "#10b981",
+    borderColor: "#064e3b",
     borderRadius: 999,
-    backgroundColor: "#022c22",
+    backgroundColor: "#061713",
     paddingHorizontal: 11,
     paddingVertical: 7,
   },
   archiveBadge: {
     borderWidth: 1,
-    borderColor: "#71717a",
+    borderColor: "#3f3f46",
     borderRadius: 999,
     backgroundColor: "#18181b",
     paddingHorizontal: 11,
     paddingVertical: 7,
   },
-  statusBadgeText: {
-    color: "#f4f4f5",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  metaRow: {
-    marginTop: 16,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
+  statusBadgeText: { color: "#f4f4f5", fontSize: 9, fontWeight: "900" },
+  metaRow: { marginTop: 15, flexDirection: "row", flexWrap: "wrap", gap: 7 },
   metaPill: {
     borderWidth: 1,
     borderColor: "#3f3f46",
     borderRadius: 999,
     backgroundColor: "#18181b",
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 7,
   },
-  metaText: {
-    color: "#d4d4d8",
-    fontSize: 12,
-    fontWeight: "800",
-  },
+  metaText: { color: "#d4d4d8", fontSize: 11, fontWeight: "800" },
   previewBlock: {
     marginTop: 20,
     borderWidth: 1,
-    borderColor: "#075985",
+    borderColor: "#164e63",
     borderRadius: 20,
     backgroundColor: "#082f49",
-    padding: 18,
+    padding: 17,
   },
-  previewLabel: {
-    color: "#7dd3fc",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2.2,
-  },
-  previewSentence: {
-    marginTop: 11,
-    color: "#f4f4f5",
-    fontSize: 16,
-    lineHeight: 27,
-    fontWeight: "600",
-  },
-  fullAnalysis: {
-    marginTop: 18,
-  },
+  previewLabel: { color: "#7dd3fc", fontSize: 9, fontWeight: "900", letterSpacing: 2 },
+  previewSentence: { marginTop: 10, color: "#f4f4f5", fontSize: 16, lineHeight: 27, fontWeight: "600" },
+  fullAnalysis: { marginTop: 18 },
   chartCard: {
-    marginBottom: 16,
+    marginBottom: 15,
     borderWidth: 1,
     borderColor: "#3f3f46",
     borderRadius: 22,
@@ -616,147 +602,69 @@ const styles = StyleSheet.create({
     padding: 14,
     overflow: "hidden",
   },
-  chartLabel: {
-    marginBottom: 12,
-    color: "#7dd3fc",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2.2,
-  },
-  chartImage: {
-    width: "100%",
-    aspectRatio: 707 / 328,
-    borderRadius: 14,
-    backgroundColor: "#ffffff",
-  },
-  chartCaption: {
-    marginTop: 12,
-    color: "#a1a1aa",
-    fontSize: 13,
-    lineHeight: 20,
-  },
+  chartLabel: { marginBottom: 11, color: "#7dd3fc", fontSize: 9, fontWeight: "900", letterSpacing: 2 },
+  chartImage: { width: "100%", minHeight: 260, aspectRatio: 16 / 9, borderRadius: 14, backgroundColor: "#ffffff" },
+  chartCaption: { marginTop: 11, color: "#a1a1aa", fontSize: 12, lineHeight: 19 },
   sectionCard: {
-    marginBottom: 14,
+    marginBottom: 13,
     flexDirection: "row",
     borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 22,
-    backgroundColor: "#09090b",
+    borderColor: "#202026",
+    borderRadius: 21,
+    backgroundColor: "#0c0c0e",
     padding: 17,
   },
-  sectionNumber: {
-    width: 36,
-    color: "#38bdf8",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  sectionCopy: {
-    flex: 1,
-  },
-  sectionTitle: {
-    color: "#ffffff",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  sectionBody: {
-    marginTop: 8,
-    color: "#d4d4d8",
-    fontSize: 15,
-    lineHeight: 25,
-  },
+  baseCard: { borderColor: "#064e3b", backgroundColor: "#07110e" },
+  alternativeCard: { borderColor: "#713f12", backgroundColor: "#171006" },
+  invalidationCard: { borderColor: "#881337", backgroundColor: "#1c0710" },
+  sectionNumber: { width: 38, color: "#38bdf8", fontSize: 11, fontWeight: "900" },
+  baseAccent: { color: "#6ee7b7" },
+  invalidationAccent: { color: "#fda4af" },
+  sectionCopy: { flex: 1 },
+  sectionTitle: { color: "#ffffff", fontSize: 17, fontWeight: "900" },
+  sectionBody: { marginTop: 8, color: "#d4d4d8", fontSize: 14, lineHeight: 24 },
   lockedCard: {
     marginTop: 18,
     borderWidth: 1,
-    borderColor: "#7c3aed",
-    borderRadius: 24,
-    backgroundColor: "#2e1065",
+    borderColor: "#4c1d95",
+    borderRadius: 23,
+    backgroundColor: "#120b20",
     padding: 19,
   },
-  lockedKicker: {
-    color: "#d8b4fe",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2.2,
-  },
-  lockedTitle: {
-    marginTop: 10,
-    color: "#ffffff",
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: "900",
-  },
-  lockedBody: {
-    marginTop: 10,
-    color: "#e4e4e7",
-    fontSize: 14,
-    lineHeight: 23,
-  },
+  lockedKicker: { color: "#c4b5fd", fontSize: 9, fontWeight: "900", letterSpacing: 2 },
+  lockedTitle: { marginTop: 10, color: "#ffffff", fontSize: 24, lineHeight: 30, fontWeight: "900" },
+  lockedBody: { marginTop: 9, color: "#d4d4d8", fontSize: 14, lineHeight: 22 },
   structureCard: {
-    marginTop: 18,
+    marginTop: 17,
     borderWidth: 1,
     borderColor: "#4c1d95",
-    borderRadius: 20,
+    borderRadius: 19,
     backgroundColor: "#1e1b4b",
-    padding: 16,
+    padding: 15,
   },
-  structureTitle: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  structureRow: {
-    marginTop: 11,
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  checkmark: {
-    marginRight: 10,
-    color: "#6ee7b7",
-    fontWeight: "900",
-  },
-  structureText: {
-    flex: 1,
-    color: "#e4e4e7",
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  structureNote: {
-    marginTop: 16,
-    color: "#a1a1aa",
-    fontSize: 12,
-    lineHeight: 19,
-  },
+  structureTitle: { color: "#ffffff", fontSize: 16, fontWeight: "900" },
+  structureGrid: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  structureRow: { flexGrow: 1, flexBasis: 290, flexDirection: "row", alignItems: "flex-start", paddingTop: 6 },
+  checkmark: { marginRight: 9, color: "#6ee7b7", fontWeight: "900" },
+  structureText: { flex: 1, color: "#e4e4e7", fontSize: 13, lineHeight: 20 },
   priceRow: {
-    marginTop: 18,
+    marginTop: 17,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 16,
+    gap: 15,
     borderWidth: 1,
     borderColor: "#6d28d9",
-    borderRadius: 20,
+    borderRadius: 19,
     backgroundColor: "#1e1b4b",
-    padding: 16,
+    padding: 15,
   },
-  priceLabel: {
-    color: "#c4b5fd",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.8,
-  },
-  price: {
-    marginTop: 4,
-    color: "#ffffff",
-    fontSize: 31,
-    fontWeight: "900",
-  },
-  pricePeriod: {
-    color: "#a1a1aa",
-    fontSize: 12,
-  },
+  priceLabel: { color: "#c4b5fd", fontSize: 9, fontWeight: "900", letterSpacing: 1.7 },
+  price: { marginTop: 4, color: "#ffffff", fontSize: 30, fontWeight: "900" },
+  pricePeriod: { color: "#a1a1aa", fontSize: 11 },
   unlockButton: {
-    minWidth: 170,
+    minWidth: 175,
     borderWidth: 1,
     borderColor: "#c084fc",
     borderRadius: 16,
@@ -764,103 +672,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
   },
-  unlockButtonText: {
-    color: "#ffffff",
-    textAlign: "center",
-    fontWeight: "900",
-  },
+  unlockButtonText: { color: "#ffffff", textAlign: "center", fontWeight: "900" },
   emptyCard: {
     borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 26,
+    borderColor: "#202026",
+    borderRadius: 24,
     backgroundColor: "#09090b",
-    padding: 22,
+    padding: 21,
   },
-  emptyTitle: {
-    color: "#ffffff",
-    fontSize: 21,
-    fontWeight: "900",
-  },
-  emptyBody: {
-    marginTop: 8,
-    color: "#a1a1aa",
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  archiveHeader: {
-    marginTop: 34,
-    marginBottom: 14,
-  },
-  archiveKicker: {
-    color: "#71717a",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2.4,
-  },
-  archiveTitle: {
-    marginTop: 8,
-    color: "#ffffff",
-    fontSize: 28,
-    fontWeight: "900",
-  },
-  archiveDescription: {
-    marginTop: 8,
-    color: "#a1a1aa",
-    fontSize: 14,
-    lineHeight: 23,
-  },
+  emptyTitle: { color: "#ffffff", fontSize: 20, fontWeight: "900" },
+  emptyBody: { marginTop: 8, color: "#a1a1aa", fontSize: 14, lineHeight: 22 },
+  archiveHeader: { marginTop: 34, marginBottom: 14 },
+  archiveKicker: { color: "#71717a", fontSize: 9, fontWeight: "900", letterSpacing: 2.1 },
+  archiveTitle: { marginTop: 8, color: "#ffffff", fontSize: 28, fontWeight: "900" },
+  archiveDescription: { marginTop: 8, color: "#a1a1aa", fontSize: 14, lineHeight: 22 },
+  archiveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 11 },
   archiveItem: {
-    marginBottom: 11,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexGrow: 1,
+    flexBasis: 330,
     borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 22,
+    borderColor: "#202026",
+    borderRadius: 21,
     backgroundColor: "#09090b",
-    padding: 17,
+    padding: 16,
   },
-  archiveItemSelected: {
-    borderColor: "#0284c7",
-    backgroundColor: "#082f49",
-  },
-  archiveItemCopy: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  archiveItemState: {
-    color: "#71717a",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.7,
-  },
-  archiveItemStateActive: {
-    color: "#7dd3fc",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.7,
-  },
-  archiveItemTitle: {
-    marginTop: 7,
-    color: "#ffffff",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  archiveItemMeta: {
-    marginTop: 6,
-    color: "#a1a1aa",
-    fontSize: 12,
-  },
-  archiveArrow: {
-    color: "#7dd3fc",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  disclaimer: {
-    marginTop: 22,
-    color: "#52525b",
-    textAlign: "center",
-    fontSize: 11,
-    lineHeight: 18,
-  },
+  archiveItemSelected: { borderColor: "#0c4a6e", backgroundColor: "#071820" },
+  archiveItemState: { color: "#71717a", fontSize: 8, fontWeight: "900", letterSpacing: 1.5 },
+  archiveItemStateActive: { color: "#7dd3fc", fontSize: 8, fontWeight: "900", letterSpacing: 1.5 },
+  archiveItemTitle: { marginTop: 7, color: "#ffffff", fontSize: 17, fontWeight: "900" },
+  archiveItemMeta: { marginTop: 6, color: "#a1a1aa", fontSize: 11 },
+  archiveArrow: { marginTop: 14, color: "#7dd3fc", fontSize: 12, fontWeight: "900" },
+  disclaimer: { marginTop: 24, color: "#52525b", textAlign: "center", fontSize: 11, lineHeight: 18 },
 });

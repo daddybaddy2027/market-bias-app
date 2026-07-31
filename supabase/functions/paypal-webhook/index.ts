@@ -2,25 +2,32 @@
 // AI MARKET EXPERT - PayPal subscription webhook
 // Supabase Edge Function / Deno
 //
-// What it does:
-// - Receives PayPal webhook events
-// - Verifies PayPal webhook signature through PayPal API
-// - Uses subscription custom_id = Supabase auth user.id
-// - Automatically activates / downgrades Pro access in public.profiles
-//
-// Deploy with verify_jwt=false because PayPal will not send Supabase JWT.
+// Security contract:
+// - PayPal signs every accepted webhook.
+// - Browser approval never grants access by itself.
+// - A verified PayPal plan ID maps to explicit product entitlements.
+// - CREATED events are stored but do not grant access.
+// - ACTIVATED / verified completed payments grant access.
+// - Multiple active subscriptions are aggregated per user, so cancelling
+//   one product cannot revoke another product that is still paid.
 // ============================================================
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type PayPalEnv = "sandbox" | "live";
-
 type JsonObject = Record<string, any>;
+type Entitlements = {
+  product: "models" | "outlook" | "complete";
+  modelsAccess: boolean;
+  outlookAccess: boolean;
+};
+type ProfileFallbackStatus = "cancelled" | "expired" | "past_due";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, paypal-auth-algo, paypal-cert-url, paypal-transmission-id, paypal-transmission-sig, paypal-transmission-time",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, paypal-auth-algo, paypal-cert-url, paypal-transmission-id, paypal-transmission-sig, paypal-transmission-time",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -36,10 +43,16 @@ function jsonResponse(body: JsonObject, status = 200) {
 
 function requiredEnv(name: string) {
   const value = Deno.env.get(name);
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
+  if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+function optionalEnv(...names: string[]) {
+  for (const name of names) {
+    const value = Deno.env.get(name);
+    if (value) return value;
+  }
+  return null;
 }
 
 function getPayPalBaseUrl() {
@@ -51,9 +64,6 @@ function getPayPalBaseUrl() {
 
 function getSupabaseAdmin() {
   const url = requiredEnv("SUPABASE_URL");
-
-  // New Supabase projects expose SUPABASE_SECRET_KEYS as JSON.
-  // Older projects expose SUPABASE_SERVICE_ROLE_KEY directly.
   const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -64,12 +74,14 @@ function getSupabaseAdmin() {
       const parsed = JSON.parse(secretKeysJson);
       key = parsed.default ?? Object.values(parsed)[0];
     } catch (_) {
-      // ignored, handled below
+      // handled below
     }
   }
 
   if (!key || typeof key !== "string") {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default");
+    throw new Error(
+      "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default"
+    );
   }
 
   return createClient(url, key, {
@@ -84,7 +96,6 @@ async function getPayPalAccessToken() {
   const clientId = requiredEnv("PAYPAL_CLIENT_ID");
   const clientSecret = requiredEnv("PAYPAL_CLIENT_SECRET");
   const baseUrl = getPayPalBaseUrl();
-
   const auth = btoa(`${clientId}:${clientSecret}`);
 
   const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
@@ -99,7 +110,9 @@ async function getPayPalAccessToken() {
   const data = await response.json();
 
   if (!response.ok || !data.access_token) {
-    throw new Error(`PayPal OAuth failed: ${response.status} ${JSON.stringify(data)}`);
+    throw new Error(
+      `PayPal OAuth failed: ${response.status} ${JSON.stringify(data)}`
+    );
   }
 
   return data.access_token as string;
@@ -121,27 +134,57 @@ async function verifyPayPalWebhook(req: Request, event: JsonObject) {
   };
 
   for (const [key, value] of Object.entries(payload)) {
-    if (!value) {
-      throw new Error(`Missing PayPal verification field: ${key}`);
-    }
+    if (!value) throw new Error(`Missing PayPal verification field: ${key}`);
   }
 
-  const response = await fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${baseUrl}/v1/notifications/verify-webhook-signature`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(`PayPal webhook verification request failed: ${response.status} ${JSON.stringify(data)}`);
+    throw new Error(
+      `PayPal webhook verification request failed: ${response.status} ${JSON.stringify(
+        data
+      )}`
+    );
   }
 
   return data.verification_status === "SUCCESS";
+}
+
+async function fetchPayPalSubscription(subscriptionId: string) {
+  const accessToken = await getPayPalAccessToken();
+  const response = await fetch(
+    `${getPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(
+      subscriptionId
+    )}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      `PayPal subscription lookup failed: ${response.status} ${JSON.stringify(data)}`
+    );
+  }
+
+  return data as JsonObject;
 }
 
 function addDays(date: Date, days: number) {
@@ -151,37 +194,103 @@ function addDays(date: Date, days: number) {
 }
 
 function safeIso(value: unknown): string | null {
-  if (!value || typeof value !== "string") {
-    return null;
-  }
-
+  if (!value || typeof value !== "string") return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function estimateExpiry(resource: JsonObject, fallbackDays = 32) {
-  return (
-    safeIso(resource?.billing_info?.next_billing_time) ??
-    safeIso(resource?.billing_info?.last_payment?.time) ??
-    addDays(new Date(), fallbackDays).toISOString()
-  );
+  const nextBilling = safeIso(resource?.billing_info?.next_billing_time);
+  if (nextBilling) return nextBilling;
+
+  const lastPayment = safeIso(resource?.billing_info?.last_payment?.time);
+  if (lastPayment) {
+    return addDays(new Date(lastPayment), fallbackDays).toISOString();
+  }
+
+  return addDays(new Date(), fallbackDays).toISOString();
 }
 
 function looksLikeUuid(value: unknown) {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
   );
+}
+
+function getSubscriptionIdFromResource(resource: JsonObject) {
+  return (
+    resource?.id ??
+    resource?.billing_agreement_id ??
+    resource?.subscription_id ??
+    resource?.supplementary_data?.related_ids?.billing_agreement_id ??
+    null
+  );
+}
+
+function entitlementsForPlan(planId: unknown): Entitlements {
+  const normalized = String(planId ?? "").trim();
+  const modelsPlan = optionalEnv(
+    "PAYPAL_MODELS_PLAN_ID",
+    "PAYPAL_PRO_MONTHLY_PLAN_ID"
+  );
+  const outlookPlan = optionalEnv("PAYPAL_OUTLOOK_PLAN_ID");
+  const completePlan = optionalEnv("PAYPAL_COMPLETE_PLAN_ID");
+
+  if (modelsPlan && normalized === modelsPlan) {
+    return {
+      product: "models",
+      modelsAccess: true,
+      outlookAccess: false,
+    };
+  }
+
+  if (outlookPlan && normalized === outlookPlan) {
+    return {
+      product: "outlook",
+      modelsAccess: false,
+      outlookAccess: true,
+    };
+  }
+
+  if (completePlan && normalized === completePlan) {
+    return {
+      product: "complete",
+      modelsAccess: true,
+      outlookAccess: true,
+    };
+  }
+
+  throw new Error(
+    `PayPal plan is not mapped to an entitlement: ${normalized || "missing plan_id"}`
+  );
+}
+
+function isActiveSubscriptionStatus(value: unknown) {
+  return String(value ?? "").toUpperCase() === "ACTIVE";
+}
+
+async function canonicalSubscriptionResource(resource: JsonObject) {
+  if (resource?.plan_id && resource?.id && String(resource.id).startsWith("I-")) {
+    return resource;
+  }
+
+  const subscriptionId = getSubscriptionIdFromResource(resource);
+  if (!subscriptionId) {
+    throw new Error("Could not resolve PayPal subscription ID from event resource.");
+  }
+
+  return await fetchPayPalSubscription(String(subscriptionId));
 }
 
 async function resolveUserId(admin: any, resource: JsonObject) {
   const customId = resource?.custom_id;
+  if (looksLikeUuid(customId)) return customId as string;
 
-  if (looksLikeUuid(customId)) {
-    return customId as string;
-  }
-
-  const email = resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
+  const email =
+    resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
 
   if (email) {
     const { data, error } = await admin
@@ -190,12 +299,30 @@ async function resolveUserId(admin: any, resource: JsonObject) {
       .ilike("email", String(email))
       .maybeSingle();
 
-    if (!error && data?.user_id) {
-      return data.user_id as string;
-    }
+    if (!error && data?.user_id) return data.user_id as string;
   }
 
   return null;
+}
+
+async function resolveUserIdWithStoredSubscription(
+  admin: any,
+  resource: JsonObject
+) {
+  let userId = await resolveUserId(admin, resource);
+  const subscriptionId = getSubscriptionIdFromResource(resource);
+
+  if (!userId && subscriptionId) {
+    const { data } = await admin
+      .from("paypal_subscriptions")
+      .select("user_id")
+      .eq("paypal_subscription_id", String(subscriptionId))
+      .maybeSingle();
+
+    userId = data?.user_id ?? null;
+  }
+
+  return userId;
 }
 
 async function saveEvent(admin: any, event: JsonObject) {
@@ -213,18 +340,19 @@ async function saveEvent(admin: any, event: JsonObject) {
   });
 
   if (error) {
-    // Duplicate event = PayPal retry. Treat as already handled.
-    if (error.code === "23505") {
-      return { eventId, duplicate: true };
-    }
-
+    if (error.code === "23505") return { eventId, duplicate: true };
     throw error;
   }
 
   return { eventId, duplicate: false };
 }
 
-async function markEvent(admin: any, eventId: string, processed: boolean, processingError?: string) {
+async function markEvent(
+  admin: any,
+  eventId: string,
+  processed: boolean,
+  processingError?: string
+) {
   await admin
     .from("paypal_webhook_events")
     .update({
@@ -235,145 +363,235 @@ async function markEvent(admin: any, eventId: string, processed: boolean, proces
     .eq("event_id", eventId);
 }
 
-function getSubscriptionIdFromResource(resource: JsonObject) {
-  return (
-    resource?.id ??
-    resource?.billing_agreement_id ??
-    resource?.subscription_id ??
-    resource?.supplementary_data?.related_ids?.billing_agreement_id ??
-    null
-  );
-}
-
-async function upsertSubscription(admin: any, resource: JsonObject, userId: string | null, statusOverride?: string) {
+async function upsertSubscription(
+  admin: any,
+  resource: JsonObject,
+  userId: string,
+  statusOverride?: string
+) {
   const subscriptionId = getSubscriptionIdFromResource(resource);
-  if (!subscriptionId) {
-    return null;
-  }
+  if (!subscriptionId) throw new Error("Missing subscription ID during upsert.");
 
-  const email = resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
-  const payerId = resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ?? null;
+  const email =
+    resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
+  const payerId =
+    resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ?? null;
   const planId = resource?.plan_id ?? null;
-  const status = statusOverride ?? resource?.status ?? "unknown";
-  const nextBillingTime = safeIso(resource?.billing_info?.next_billing_time);
-  const lastPaymentTime = safeIso(resource?.billing_info?.last_payment?.time);
+  const status = statusOverride ?? resource?.status ?? "UNKNOWN";
 
-  const { error } = await admin
-    .from("paypal_subscriptions")
-    .upsert(
-      {
-        paypal_subscription_id: String(subscriptionId),
-        user_id: userId,
-        email,
-        status,
-        plan_id: planId,
-        payer_id: payerId,
-        next_billing_time: nextBillingTime,
-        last_payment_time: lastPaymentTime,
-        raw: resource,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "paypal_subscription_id" },
-    );
+  const { error } = await admin.from("paypal_subscriptions").upsert(
+    {
+      paypal_subscription_id: String(subscriptionId),
+      user_id: userId,
+      email,
+      status,
+      plan_id: planId,
+      payer_id: payerId,
+      next_billing_time: safeIso(resource?.billing_info?.next_billing_time),
+      last_payment_time: safeIso(resource?.billing_info?.last_payment?.time),
+      raw: resource,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "paypal_subscription_id" }
+  );
 
-  if (error) {
-    throw error;
-  }
-
+  if (error) throw error;
   return String(subscriptionId);
 }
 
-async function activateProfile(admin: any, userId: string, resource: JsonObject) {
-  const subscriptionId = getSubscriptionIdFromResource(resource);
-  const expiry = estimateExpiry(resource, 32);
+async function recomputeProfileEntitlements(
+  admin: any,
+  userId: string,
+  fallbackStatus: ProfileFallbackStatus = "cancelled"
+) {
+  const { data, error } = await admin
+    .from("paypal_subscriptions")
+    .select(
+      "paypal_subscription_id,status,plan_id,payer_id,next_billing_time,raw,updated_at"
+    )
+    .eq("user_id", userId);
 
-  const { error } = await admin
+  if (error) throw error;
+
+  const activeRows = (data ?? []).filter((row: JsonObject) =>
+    isActiveSubscriptionStatus(row.status)
+  );
+
+  let modelsAccess = false;
+  let outlookAccess = false;
+  const products: string[] = [];
+
+  for (const row of activeRows) {
+    const mapped = entitlementsForPlan(row.plan_id);
+    modelsAccess ||= mapped.modelsAccess;
+    outlookAccess ||= mapped.outlookAccess;
+    products.push(mapped.product);
+  }
+
+  if (!activeRows.length) {
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({
+        plan: "free",
+        subscription_status: fallbackStatus,
+        subscription_provider: "paypal",
+        subscription_expires_at: new Date().toISOString(),
+        subscription_updated_at: new Date().toISOString(),
+        models_access: false,
+        outlook_access: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (profileError) throw profileError;
+
+    return {
+      activeSubscriptions: 0,
+      products: [],
+      modelsAccess: false,
+      outlookAccess: false,
+    };
+  }
+
+  const sorted = [...activeRows].sort((left: JsonObject, right: JsonObject) =>
+    String(right.updated_at ?? "").localeCompare(String(left.updated_at ?? ""))
+  );
+  const representative = sorted[0];
+
+  const expiryCandidates = activeRows
+    .map((row: JsonObject) => safeIso(row.next_billing_time))
+    .filter((value: string | null): value is string => Boolean(value))
+    .sort();
+  const expiry =
+    expiryCandidates[expiryCandidates.length - 1] ??
+    estimateExpiry(representative.raw ?? {}, 32);
+
+  const { error: profileError } = await admin
     .from("profiles")
     .update({
       plan: "pro",
       subscription_status: "active",
       subscription_provider: "paypal",
-      provider_customer_id: resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ?? null,
-      provider_subscription_id: subscriptionId,
-      paypal_plan_id: resource?.plan_id ?? null,
-      subscription_started_at: resource?.start_time ? safeIso(resource.start_time) : undefined,
+      provider_customer_id: representative.payer_id ?? null,
+      provider_subscription_id: representative.paypal_subscription_id ?? null,
+      paypal_plan_id: activeRows.length === 1 ? representative.plan_id ?? null : null,
       subscription_expires_at: expiry,
       subscription_updated_at: new Date().toISOString(),
+      models_access: modelsAccess,
+      outlook_access: outlookAccess,
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId);
 
-  if (error) {
-    throw error;
-  }
+  if (profileError) throw profileError;
+
+  return {
+    activeSubscriptions: activeRows.length,
+    products: [...new Set(products)],
+    modelsAccess,
+    outlookAccess,
+  };
 }
 
-async function downgradeProfile(admin: any, userId: string, status: "cancelled" | "expired" | "past_due") {
-  const { error } = await admin
-    .from("profiles")
-    .update({
-      plan: "free",
-      subscription_status: status,
-      subscription_expires_at: new Date().toISOString(),
-      subscription_updated_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId);
+async function handleSubscriptionEvent(
+  admin: any,
+  eventType: string,
+  eventResource: JsonObject
+) {
+  const canonical = await canonicalSubscriptionResource(eventResource);
+  const subscriptionId = getSubscriptionIdFromResource(canonical);
+  let userId = await resolveUserIdWithStoredSubscription(admin, canonical);
 
-  if (error) {
-    throw error;
-  }
-}
-
-async function handleSubscriptionEvent(admin: any, eventType: string, resource: JsonObject) {
-  let userId = await resolveUserId(admin, resource);
-  const subscriptionId = getSubscriptionIdFromResource(resource);
-
-  // If renewal/cancel webhook lacks custom_id, recover user from stored subscription record.
-  if (!userId && subscriptionId) {
-    const { data } = await admin
-      .from("paypal_subscriptions")
-      .select("user_id")
-      .eq("paypal_subscription_id", String(subscriptionId))
-      .maybeSingle();
-
-    userId = data?.user_id ?? null;
+  if (!userId) {
+    userId = await resolveUserIdWithStoredSubscription(admin, eventResource);
   }
 
   if (!userId) {
-    throw new Error("Could not resolve Supabase user_id from PayPal custom_id/email/subscription record.");
+    throw new Error(
+      "Could not resolve Supabase user_id from PayPal custom_id, email or stored subscription."
+    );
   }
 
-  if (
-    eventType === "BILLING.SUBSCRIPTION.ACTIVATED" ||
-    eventType === "BILLING.SUBSCRIPTION.CREATED" ||
-    eventType === "BILLING.SUBSCRIPTION.UPDATED"
-  ) {
-    await upsertSubscription(admin, resource, userId, resource?.status ?? "ACTIVE");
+  const status = String(canonical?.status ?? "").toUpperCase();
 
-    if (String(resource?.status ?? "").toUpperCase() !== "CANCELLED") {
-      await activateProfile(admin, userId, resource);
+  if (eventType === "BILLING.SUBSCRIPTION.CREATED") {
+    await upsertSubscription(admin, canonical, userId, status || "CREATED");
+    return { userId, action: "stored_without_access", subscriptionId, status };
+  }
+
+  if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {
+    await upsertSubscription(admin, canonical, userId, "ACTIVE");
+    const entitlements = await recomputeProfileEntitlements(admin, userId);
+    return { userId, action: "activated", subscriptionId, entitlements };
+  }
+
+  if (eventType === "BILLING.SUBSCRIPTION.UPDATED") {
+    await upsertSubscription(admin, canonical, userId, status || "UPDATED");
+
+    if (status === "ACTIVE") {
+      const entitlements = await recomputeProfileEntitlements(admin, userId);
+      return { userId, action: "updated_active", subscriptionId, entitlements };
     }
 
-    return { userId, action: "activated", subscriptionId };
+    if (status === "CANCELLED") {
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "cancelled"
+      );
+      return { userId, action: "updated_cancelled", subscriptionId, entitlements };
+    }
+
+    if (status === "EXPIRED") {
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "expired"
+      );
+      return { userId, action: "updated_expired", subscriptionId, entitlements };
+    }
+
+    if (status === "SUSPENDED") {
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "past_due"
+      );
+      return { userId, action: "updated_suspended", subscriptionId, entitlements };
+    }
+
+    return {
+      userId,
+      action: "updated_no_entitlement_change",
+      subscriptionId,
+      status,
+    };
   }
 
   if (eventType === "PAYMENT.SALE.COMPLETED") {
-    await upsertSubscription(admin, resource, userId, "ACTIVE");
-    await activateProfile(admin, userId, resource);
-    return { userId, action: "payment_completed", subscriptionId };
+    await upsertSubscription(admin, canonical, userId, "ACTIVE");
+    const entitlements = await recomputeProfileEntitlements(admin, userId);
+    return { userId, action: "payment_completed", subscriptionId, entitlements };
   }
 
   if (eventType === "BILLING.SUBSCRIPTION.CANCELLED") {
-    await upsertSubscription(admin, resource, userId, "CANCELLED");
-    await downgradeProfile(admin, userId, "cancelled");
-    return { userId, action: "cancelled", subscriptionId };
+    await upsertSubscription(admin, canonical, userId, "CANCELLED");
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "cancelled"
+    );
+    return { userId, action: "cancelled", subscriptionId, entitlements };
   }
 
   if (eventType === "BILLING.SUBSCRIPTION.EXPIRED") {
-    await upsertSubscription(admin, resource, userId, "EXPIRED");
-    await downgradeProfile(admin, userId, "expired");
-    return { userId, action: "expired", subscriptionId };
+    await upsertSubscription(admin, canonical, userId, "EXPIRED");
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "expired"
+    );
+    return { userId, action: "expired", subscriptionId, entitlements };
   }
 
   if (
@@ -383,12 +601,17 @@ async function handleSubscriptionEvent(admin: any, eventType: string, resource: 
     eventType === "PAYMENT.SALE.REVERSED" ||
     eventType === "PAYMENT.SALE.REFUNDED"
   ) {
-    await upsertSubscription(admin, resource, userId, "PAST_DUE");
-    await downgradeProfile(admin, userId, "past_due");
-    return { userId, action: "past_due", subscriptionId };
+    await upsertSubscription(admin, canonical, userId, "PAST_DUE");
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "past_due"
+    );
+    return { userId, action: "past_due", subscriptionId, entitlements };
   }
 
-  return { userId, action: "ignored", subscriptionId };
+  await upsertSubscription(admin, canonical, userId, status || "IGNORED");
+  return { userId, action: "ignored", subscriptionId, status };
 }
 
 serve(async (req: Request) => {
@@ -415,7 +638,10 @@ serve(async (req: Request) => {
     const verified = await verifyPayPalWebhook(req, event);
 
     if (!verified) {
-      return jsonResponse({ error: "PayPal webhook signature verification failed" }, 401);
+      return jsonResponse(
+        { error: "PayPal webhook signature verification failed" },
+        401
+      );
     }
 
     const saved = await saveEvent(admin, event);
@@ -427,7 +653,6 @@ serve(async (req: Request) => {
 
     const eventType = String(event.event_type ?? "UNKNOWN");
     const resource = event.resource ?? {};
-
     const result = await handleSubscriptionEvent(admin, eventType, resource);
 
     await markEvent(admin, eventId, true);
@@ -449,9 +674,12 @@ serve(async (req: Request) => {
 
     console.error("PayPal webhook error:", message);
 
-    return jsonResponse({
-      ok: false,
-      error: message,
-    }, 500);
+    return jsonResponse(
+      {
+        ok: false,
+        error: message,
+      },
+      500
+    );
   }
 });
