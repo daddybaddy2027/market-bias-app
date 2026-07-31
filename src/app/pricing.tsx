@@ -10,40 +10,39 @@ import {
   View,
 } from "react-native";
 
-import { PayPalSubscribeButton } from "../components/PayPalSubscribeButton";
+import { AppTopNav } from "../components/AppTopNav";
+import {
+  PayPalSubscribeButton,
+  type PayPalProduct,
+} from "../components/PayPalSubscribeButton";
 import { MODEL_CATALOG } from "../config/modelCatalog";
-import { OUTLOOK_STRUCTURE } from "../config/outlookContent";
 import { useAuth } from "../providers/AuthProvider";
 
 type PlanTheme = "free" | "models" | "outlook" | "complete";
 
-function FeatureRow({
-  children,
-  included = true,
-}: {
-  children: React.ReactNode;
-  included?: boolean;
-}) {
+type PlanProps = {
+  theme: PlanTheme;
+  title: string;
+  price: string;
+  subtitle: string;
+  features: string[];
+  product?: PayPalProduct;
+  recommended?: boolean;
+  active?: boolean;
+};
+
+const THEME = {
+  free: { border: "#064e3b", background: "#061713", accent: "#6ee7b7" },
+  models: { border: "#4c1d95", background: "#120b20", accent: "#c4b5fd" },
+  outlook: { border: "#0c4a6e", background: "#071820", accent: "#7dd3fc" },
+  complete: { border: "#92400e", background: "#1c1207", accent: "#fbbf24" },
+};
+
+function FeatureRow({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.featureRow}>
-      <Text style={included ? styles.featureCheck : styles.featureMissing}>
-        {included ? "✓" : "—"}
-      </Text>
-      <Text style={included ? styles.featureText : styles.featureTextMuted}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-function Price({ value }: { value: string }) {
-  return (
-    <View style={styles.priceWrap}>
-      <View style={styles.monthlyBadge}>
-        <Text style={styles.monthlyBadgeText}>MONTHLY</Text>
-      </View>
-      <Text style={styles.priceValue}>{value}</Text>
-      <Text style={styles.pricePeriod}>per month</Text>
+      <Text style={styles.featureCheck}>✓</Text>
+      <Text style={styles.featureText}>{children}</Text>
     </View>
   );
 }
@@ -51,55 +50,73 @@ function Price({ value }: { value: string }) {
 function PlanCard({
   theme,
   title,
-  subtitle,
   price,
-  children,
-  footer,
-}: {
-  theme: PlanTheme;
-  title: string;
-  subtitle: string;
-  price: string;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}) {
+  subtitle,
+  features,
+  product,
+  recommended,
+  active,
+}: PlanProps) {
+  const palette = THEME[theme];
+
   return (
-    <View style={[styles.planCard, planThemeStyles[theme]]}>
-      <View style={styles.planHeader}>
-        <View style={styles.planHeaderCopy}>
+    <View
+      style={[
+        styles.planCard,
+        {
+          borderColor: palette.border,
+          backgroundColor: palette.background,
+        },
+      ]}
+    >
+      <View style={styles.planTopRow}>
+        <View style={styles.planTitleWrap}>
+          <View style={styles.planBadges}>
+            <View style={[styles.planTypeBadge, { borderColor: palette.border }]}>
+              <Text style={[styles.planTypeText, { color: palette.accent }]}>
+                {title.toUpperCase()}
+              </Text>
+            </View>
+            {recommended ? (
+              <View style={styles.recommendedBadge}>
+                <Text style={styles.recommendedText}>BEST VALUE</Text>
+              </View>
+            ) : null}
+            {active ? (
+              <View style={styles.activeBadge}>
+                <Text style={styles.activeText}>ACTIVE</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.planTitle}>{title}</Text>
           <Text style={styles.planSubtitle}>{subtitle}</Text>
         </View>
-        <Price value={price} />
+
+        <View style={styles.priceWrap}>
+          <Text style={styles.price}>{price}</Text>
+          <Text style={styles.pricePeriod}>{price === "€0" ? "forever" : "per month"}</Text>
+        </View>
       </View>
 
-      <View style={styles.features}>{children}</View>
-      {footer ? <View style={styles.planFooter}>{footer}</View> : null}
-    </View>
-  );
-}
+      <View style={styles.featureList}>
+        {features.map((feature) => (
+          <FeatureRow key={feature}>{feature}</FeatureRow>
+        ))}
+      </View>
 
-function PendingCheckoutButton({
-  isAuthenticated,
-  label,
-}: {
-  isAuthenticated: boolean;
-  label: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => router.push((isAuthenticated ? "/account" : "/login") as never)}
-      style={({ pressed }) => [styles.pendingButton, pressed && styles.pressed]}
-    >
-      <Text style={styles.pendingButtonTitle}>
-        {isAuthenticated ? label : "Create account before subscribing"}
-      </Text>
-      <Text style={styles.pendingButtonBody}>
-        Checkout will be enabled after the matching PayPal plan and entitlement mapping
-        are connected.
-      </Text>
-    </Pressable>
+      <View style={styles.planAction}>
+        {product ? (
+          <PayPalSubscribeButton product={product} />
+        ) : (
+          <Pressable
+            onPress={() => router.push("/" as never)}
+            style={({ pressed }) => [styles.freeButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.freeButtonText}>Open free dashboard</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -109,9 +126,6 @@ export default function PricingScreen() {
     hasModelsAccess,
     hasOutlookAccess,
   } = useAuth();
-
-  const freeModels = MODEL_CATALOG.filter((model) => model.tier === "Free");
-  const proModels = MODEL_CATALOG.filter((model) => model.tier === "Pro");
   const hasCompleteAccess = hasModelsAccess && hasOutlookAccess;
 
   return (
@@ -122,215 +136,183 @@ export default function PricingScreen() {
       ]}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.backText}>← Back to dashboard</Text>
-        </Pressable>
+        <AppTopNav />
 
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>AI MARKET EXPERT PLANS</Text>
-          <Text style={styles.heroTitle}>
-            Models, analyst outlook, or the complete market view.
-          </Text>
+          <Text style={styles.eyebrow}>SIMPLE MONTHLY ACCESS</Text>
+          <Text style={styles.heroTitle}>Choose the layer of market context you need.</Text>
           <Text style={styles.heroBody}>
-            Choose the probabilistic model board, the Technical and Fundamental
-            Outlook, or combine both products under one subscription.
+            Start with the free cross-asset dashboard, add six transparent AI model products,
+            subscribe to the analyst Outlook, or combine both under Complete access.
+          </Text>
+
+          {!isAuthenticated ? (
+            <Pressable
+              onPress={() => router.push("/login" as never)}
+              style={({ pressed }) => [styles.createAccountButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.createAccountButtonText}>Create a free account first</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={styles.assuranceStrip}>
+          <View style={styles.assuranceItem}>
+            <Text style={styles.assuranceValue}>PayPal</Text>
+            <Text style={styles.assuranceLabel}>Secure recurring checkout</Text>
+          </View>
+          <View style={styles.assuranceItem}>
+            <Text style={styles.assuranceValue}>Webhook verified</Text>
+            <Text style={styles.assuranceLabel}>Browser approval cannot unlock access alone</Text>
+          </View>
+          <View style={styles.assuranceItem}>
+            <Text style={styles.assuranceValue}>Cancel anytime</Text>
+            <Text style={styles.assuranceLabel}>Access follows verified subscription status</Text>
+          </View>
+        </View>
+
+        <View style={styles.planGrid}>
+          <PlanCard
+            theme="free"
+            title="Free"
+            price="€0"
+            subtitle="The market context layer before any subscription."
+            features={[
+              "Live market regime and risk-on / risk-off context",
+              "Currency-strength ranking and cross-asset drivers",
+              "One public GBPUSD 12h model product",
+              "Two-sentence preview of the latest Outlook",
+              "Locked previews of Pro research and model analytics",
+            ]}
+          />
+
+          <PlanCard
+            theme="models"
+            title="Models"
+            price="€24.99"
+            subtitle={`All ${MODEL_CATALOG.length} selected production model products.`}
+            product="models"
+            active={hasModelsAccess && !hasCompleteAccess}
+            features={[
+              "Six selected model products across EURUSD, GBPUSD, AUDUSD and USDJPY",
+              "Directional bias, confidence and momentum confirmations",
+              "Correct, incorrect and pending prediction ledger",
+              "Live signed-pip and trade-management tracking",
+              "MFE, MAE, half-profit and break-even outcomes where available",
+              "Full protected model history and performance filters",
+            ]}
+          />
+
+          <PlanCard
+            theme="outlook"
+            title="Outlook"
+            price="€25"
+            subtitle="Trader-led fundamental, macro and technical analysis."
+            product="outlook"
+            active={hasOutlookAccess && !hasCompleteAccess}
+            features={[
+              "Weekly market regime and major currency outlook",
+              "Monetary policy, sentiment, geopolitics and capital-flow context",
+              "Important events and post-event market updates",
+              "Pair of interest with technical structure",
+              "Base scenario, alternative scenario and invalidation",
+              "Complete historical archive with macro and technical charts",
+            ]}
+          />
+
+          <PlanCard
+            theme="complete"
+            title="Complete"
+            price="€50"
+            subtitle="The full systematic and human market view in one account."
+            product="complete"
+            recommended
+            active={hasCompleteAccess}
+            features={[
+              "Everything included in Models access",
+              "Everything included in Outlook access",
+              "Full prediction performance dashboard",
+              "Full analyst archive and technical charts",
+              "One recurring subscription and one account entitlement",
+              "Best fit for traders combining their own setup with directional confirmation",
+            ]}
+          />
+        </View>
+
+        <View style={styles.explanationCard}>
+          <Text style={styles.explanationKicker}>WHAT YOU ARE PAYING FOR</Text>
+          <Text style={styles.explanationTitle}>Decision support, not manufactured certainty.</Text>
+          <Text style={styles.explanationBody}>
+            Models preserve every published prediction and separate terminal forecast accuracy
+            from trade-management outcomes. Outlook publications remain dated, archived and
+            attached to their original scenario and invalidation. No package guarantees profit.
           </Text>
         </View>
 
-        <PlanCard
-          theme="free"
-          title="Free"
-          subtitle={`${freeModels.length} public model view plus core market context`}
-          price="€0"
-        >
-          <FeatureRow>GBPUSD 12h Final V2 direction model</FeatureRow>
-          <FeatureRow>Session-filtered public prediction schedule</FeatureRow>
-          <FeatureRow>Core macro regime, market state and currency strength</FeatureRow>
-          <FeatureRow>Two-sentence preview of the latest analyst outlook</FeatureRow>
-          <FeatureRow>Locked previews of the remaining Pro models</FeatureRow>
-          <FeatureRow included={false}>Complete model board and model history</FeatureRow>
-          <FeatureRow included={false}>Full Outlook and historical archive</FeatureRow>
-        </PlanCard>
-
-        <PlanCard
-          theme="models"
-          title="Models"
-          subtitle={`Full ${MODEL_CATALOG.length}-model board`}
-          price="€24.99"
-          footer={
-            <>
-              {isAuthenticated ? (
-                <PayPalSubscribeButton />
-              ) : (
-                <Pressable
-                  onPress={() => router.push("/login" as never)}
-                  style={({ pressed }) => [styles.modelsLoginButton, pressed && styles.pressed]}
-                >
-                  <Text style={styles.modelsLoginButtonText}>
-                    Create account before subscribing
-                  </Text>
-                </Pressable>
-              )}
-
-              {hasModelsAccess ? (
-                <View style={styles.activeNotice}>
-                  <Text style={styles.activeNoticeTitle}>Models access is active</Text>
-                  <Text style={styles.activeNoticeBody}>
-                    Your account can view the complete protected model board.
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          }
-        >
-          <FeatureRow>
-            All {MODEL_CATALOG.length} model cards, including {proModels.length} Pro models
-          </FeatureRow>
-          <FeatureRow>Current bias, probability, confidence and forecast zones</FeatureRow>
-          <FeatureRow>Verified live and evaluation metrics shown separately</FeatureRow>
-          <FeatureRow>Independent non-overlapping history where available</FeatureRow>
-          <FeatureRow>Range models with path coverage and outcome tracking</FeatureRow>
-          <FeatureRow included={false}>Full Technical and Fundamental Outlook</FeatureRow>
-        </PlanCard>
-
-        <PlanCard
-          theme="outlook"
-          title="Technical and Fundamental Outlook"
-          subtitle="Human macro, sentiment and technical commentary"
-          price="€25"
-          footer={
-            hasOutlookAccess ? (
-              <Pressable
-                onPress={() => router.push("/outlook" as never)}
-                style={({ pressed }) => [styles.outlookOpenButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.outlookOpenButtonText}>Open your Outlook access</Text>
-              </Pressable>
-            ) : (
-              <PendingCheckoutButton
-                label="Outlook checkout is being connected"
-                isAuthenticated={isAuthenticated}
-              />
-            )
-          }
-        >
-          {OUTLOOK_STRUCTURE.slice(3).map((item) => (
-            <FeatureRow key={item}>{item}</FeatureRow>
-          ))}
-          <FeatureRow>Two or three updates per week when conditions require them</FeatureRow>
-          <FeatureRow>Every previous publication stored in the archive</FeatureRow>
-          <FeatureRow included={false}>Complete protected model board</FeatureRow>
-        </PlanCard>
-
-        <PlanCard
-          theme="complete"
-          title="Complete"
-          subtitle="Models plus Technical and Fundamental Outlook"
-          price="€50"
-          footer={
-            hasCompleteAccess ? (
-              <View style={styles.completeActiveNotice}>
-                <Text style={styles.completeActiveTitle}>Complete access is active</Text>
-                <Text style={styles.completeActiveBody}>
-                  Models and Outlook entitlements are both enabled on this account.
-                </Text>
-              </View>
-            ) : (
-              <PendingCheckoutButton
-                label="Complete checkout is being connected"
-                isAuthenticated={isAuthenticated}
-              />
-            )
-          }
-        >
-          <FeatureRow>Everything included in the Models package</FeatureRow>
-          <FeatureRow>Everything included in the Outlook package</FeatureRow>
-          <FeatureRow>Automated cross-asset view plus human interpretation</FeatureRow>
-          <FeatureRow>Full model history and full Outlook archive</FeatureRow>
-          <FeatureRow>One subscription for the complete platform</FeatureRow>
-        </PlanCard>
-
-        <View style={styles.disclaimerCard}>
-          <Text style={styles.disclaimerTitle}>Performance and commentary labels</Text>
-          <Text style={styles.disclaimerBody}>
-            Model accuracy comes from stored predictions and purged evaluation. Analyst
-            outlooks are dated market commentary with a base case, alternatives and
-            invalidation. Neither product guarantees future performance, because the
-            market remains stubbornly indifferent to subscription architecture.
-          </Text>
+        <View style={styles.faqGrid}>
+          <View style={styles.faqCard}>
+            <Text style={styles.faqTitle}>When does access unlock?</Text>
+            <Text style={styles.faqBody}>
+              After PayPal approves the subscription and the server verifies the signed webhook.
+              This normally takes seconds, though payment reviews can take longer.
+            </Text>
+          </View>
+          <View style={styles.faqCard}>
+            <Text style={styles.faqTitle}>Can I use the models as signals?</Text>
+            <Text style={styles.faqBody}>
+              You can use them as directional confirmation or as a systematic signal source,
+              but position sizing and execution remain your responsibility.
+            </Text>
+          </View>
+          <View style={styles.faqCard}>
+            <Text style={styles.faqTitle}>Are losses removed?</Text>
+            <Text style={styles.faqBody}>
+              No. Correct, incorrect and pending predictions remain in the stored ledger.
+            </Text>
+          </View>
         </View>
+
+        <Text style={styles.disclaimer}>
+          Educational market analysis and model research only. Not financial advice.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const planThemeStyles = StyleSheet.create({
-  free: {
-    borderColor: "#059669",
-    backgroundColor: "#022c22",
-  },
-  models: {
-    borderColor: "#8b5cf6",
-    backgroundColor: "#2e1065",
-  },
-  outlook: {
-    borderColor: "#0284c7",
-    backgroundColor: "#082f49",
-  },
-  complete: {
-    borderColor: "#d97706",
-    backgroundColor: "#451a03",
-  },
-});
-
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#050505",
   },
   scrollContent: {
     width: "100%",
-    maxWidth: 1060,
+    maxWidth: 1180,
     alignSelf: "center",
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 96,
   },
   pressed: {
-    opacity: 0.72,
-  },
-  backButton: {
-    alignSelf: "flex-start",
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#3f3f46",
-    borderRadius: 18,
-    backgroundColor: "#09090b",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backText: {
-    color: "#d4d4d8",
-    fontWeight: "800",
+    opacity: 0.7,
   },
   hero: {
-    marginBottom: 26,
+    marginBottom: 25,
+    maxWidth: 850,
   },
   eyebrow: {
     color: "#c4b5fd",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 3.5,
+    letterSpacing: 2.6,
   },
   heroTitle: {
-    marginTop: 16,
+    marginTop: 15,
     color: "#ffffff",
-    fontSize: 40,
-    lineHeight: 48,
+    fontSize: 44,
+    lineHeight: 52,
     fontWeight: "900",
+    letterSpacing: -1.2,
   },
   heroBody: {
     marginTop: 14,
@@ -338,203 +320,233 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 27,
   },
-  planCard: {
-    marginBottom: 18,
+  createAccountButton: {
+    alignSelf: "flex-start",
+    minHeight: 50,
+    marginTop: 18,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderRadius: 28,
-    padding: 22,
+    borderColor: "#38bdf8",
+    borderRadius: 16,
+    backgroundColor: "#0369a1",
+    paddingHorizontal: 18,
   },
-  planHeader: {
+  createAccountButtonText: {
+    color: "#ffffff",
+    fontWeight: "900",
+  },
+  assuranceStrip: {
+    marginBottom: 20,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#202026",
+    borderRadius: 22,
+    backgroundColor: "#09090b",
+    padding: 12,
+  },
+  assuranceItem: {
+    flexGrow: 1,
+    flexBasis: 220,
+    padding: 10,
+  },
+  assuranceValue: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  assuranceLabel: {
+    marginTop: 5,
+    color: "#71717a",
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  planGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+  },
+  planCard: {
+    flexGrow: 1,
+    flexBasis: 500,
+    borderWidth: 1,
+    borderRadius: 26,
+    padding: 21,
+  },
+  planTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: 15,
   },
-  planHeaderCopy: {
+  planTitleWrap: {
     flex: 1,
-    paddingRight: 16,
+  },
+  planBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+  planTypeBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  planTypeText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+  recommendedBadge: {
+    borderWidth: 1,
+    borderColor: "#f59e0b",
+    borderRadius: 999,
+    backgroundColor: "#451a03",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  recommendedText: {
+    color: "#fde68a",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+  activeBadge: {
+    borderWidth: 1,
+    borderColor: "#10b981",
+    borderRadius: 999,
+    backgroundColor: "#022c22",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  activeText: {
+    color: "#6ee7b7",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.4,
   },
   planTitle: {
+    marginTop: 14,
     color: "#ffffff",
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 27,
     fontWeight: "900",
   },
   planSubtitle: {
     marginTop: 7,
-    color: "#d4d4d8",
+    color: "#a1a1aa",
     fontSize: 14,
     lineHeight: 22,
   },
   priceWrap: {
     alignItems: "flex-end",
   },
-  monthlyBadge: {
-    borderWidth: 1,
-    borderColor: "#a78bfa",
-    borderRadius: 999,
-    backgroundColor: "#312e81",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  monthlyBadgeText: {
-    color: "#ede9fe",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-  priceValue: {
-    marginTop: 9,
+  price: {
     color: "#ffffff",
-    fontSize: 29,
+    fontSize: 31,
     fontWeight: "900",
   },
   pricePeriod: {
-    marginTop: 3,
-    color: "#a1a1aa",
-    fontSize: 11,
-    fontWeight: "700",
+    marginTop: 4,
+    color: "#71717a",
+    fontSize: 10,
+    fontWeight: "800",
   },
-  features: {
-    marginTop: 13,
+  featureList: {
+    marginTop: 16,
+    gap: 10,
   },
   featureRow: {
-    marginTop: 10,
     flexDirection: "row",
     alignItems: "flex-start",
   },
   featureCheck: {
     marginRight: 10,
     color: "#6ee7b7",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  featureMissing: {
-    marginRight: 10,
-    color: "#71717a",
-    fontSize: 15,
     fontWeight: "900",
   },
   featureText: {
     flex: 1,
     color: "#e4e4e7",
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 21,
   },
-  featureTextMuted: {
-    flex: 1,
-    color: "#71717a",
-    fontSize: 14,
-    lineHeight: 22,
+  planAction: {
+    marginTop: 20,
   },
-  planFooter: {
-    marginTop: 18,
-  },
-  modelsLoginButton: {
+  freeButton: {
     minHeight: 54,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#c4b5fd",
-    borderRadius: 18,
-    backgroundColor: "#6d28d9",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  modelsLoginButtonText: {
-    color: "#ffffff",
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  pendingButton: {
-    minHeight: 62,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#71717a",
-    borderRadius: 18,
-    backgroundColor: "#18181b",
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-  },
-  pendingButtonTitle: {
-    color: "#f4f4f5",
-    fontSize: 14,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  pendingButtonBody: {
-    marginTop: 6,
-    color: "#a1a1aa",
-    fontSize: 11,
-    lineHeight: 17,
-    textAlign: "center",
-  },
-  outlookOpenButton: {
-    minHeight: 54,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#7dd3fc",
-    borderRadius: 18,
-    backgroundColor: "#0369a1",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  outlookOpenButtonText: {
-    color: "#ffffff",
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  activeNotice: {
-    marginTop: 13,
     borderWidth: 1,
     borderColor: "#10b981",
     borderRadius: 17,
-    backgroundColor: "#022c22",
-    padding: 14,
+    backgroundColor: "#047857",
   },
-  activeNoticeTitle: {
-    color: "#6ee7b7",
-    fontWeight: "900",
-  },
-  activeNoticeBody: {
-    marginTop: 5,
-    color: "#d4d4d8",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  completeActiveNotice: {
-    borderWidth: 1,
-    borderColor: "#f59e0b",
-    borderRadius: 17,
-    backgroundColor: "#78350f",
-    padding: 14,
-  },
-  completeActiveTitle: {
-    color: "#fde68a",
-    fontWeight: "900",
-  },
-  completeActiveBody: {
-    marginTop: 5,
-    color: "#fef3c7",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  disclaimerCard: {
-    borderWidth: 1,
-    borderColor: "#27272a",
-    borderRadius: 24,
-    backgroundColor: "#09090b",
-    padding: 20,
-  },
-  disclaimerTitle: {
+  freeButtonText: {
     color: "#ffffff",
-    fontSize: 19,
     fontWeight: "900",
   },
-  disclaimerBody: {
+  explanationCard: {
+    marginTop: 28,
+    borderWidth: 1,
+    borderColor: "#0c4a6e",
+    borderRadius: 25,
+    backgroundColor: "#071820",
+    padding: 21,
+  },
+  explanationKicker: {
+    color: "#7dd3fc",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 2.1,
+  },
+  explanationTitle: {
+    marginTop: 10,
+    color: "#ffffff",
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+  explanationBody: {
     marginTop: 10,
     color: "#a1a1aa",
     fontSize: 14,
     lineHeight: 23,
+  },
+  faqGrid: {
+    marginTop: 14,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  faqCard: {
+    flexGrow: 1,
+    flexBasis: 300,
+    borderWidth: 1,
+    borderColor: "#202026",
+    borderRadius: 21,
+    backgroundColor: "#0c0c0e",
+    padding: 17,
+  },
+  faqTitle: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  faqBody: {
+    marginTop: 8,
+    color: "#a1a1aa",
+    fontSize: 12,
+    lineHeight: 20,
+  },
+  disclaimer: {
+    marginTop: 24,
+    color: "#52525b",
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 18,
   },
 });
