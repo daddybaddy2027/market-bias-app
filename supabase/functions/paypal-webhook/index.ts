@@ -8,6 +8,8 @@
 // - A verified PayPal plan ID maps to explicit product entitlements.
 // - CREATED events are stored but do not grant access.
 // - ACTIVATED / verified completed payments grant access.
+// - Multiple active subscriptions are aggregated per user, so cancelling
+//   one product cannot revoke another product that is still paid.
 // ============================================================
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -20,6 +22,7 @@ type Entitlements = {
   modelsAccess: boolean;
   outlookAccess: boolean;
 };
+type ProfileFallbackStatus = "cancelled" | "expired" | "past_due";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -265,6 +268,10 @@ function entitlementsForPlan(planId: unknown): Entitlements {
   );
 }
 
+function isActiveSubscriptionStatus(value: unknown) {
+  return String(value ?? "").toUpperCase() === "ACTIVE";
+}
+
 async function canonicalSubscriptionResource(resource: JsonObject) {
   if (resource?.plan_id && resource?.id && String(resource.id).startsWith("I-")) {
     return resource;
@@ -392,60 +399,98 @@ async function upsertSubscription(
   return String(subscriptionId);
 }
 
-async function activateProfile(
+async function recomputeProfileEntitlements(
   admin: any,
   userId: string,
-  resource: JsonObject
+  fallbackStatus: ProfileFallbackStatus = "cancelled"
 ) {
-  const subscriptionId = getSubscriptionIdFromResource(resource);
-  const planId = resource?.plan_id;
-  const entitlements = entitlementsForPlan(planId);
-  const expiry = estimateExpiry(resource, 32);
+  const { data, error } = await admin
+    .from("paypal_subscriptions")
+    .select(
+      "paypal_subscription_id,status,plan_id,payer_id,next_billing_time,raw,updated_at"
+    )
+    .eq("user_id", userId);
 
-  const { error } = await admin
+  if (error) throw error;
+
+  const activeRows = (data ?? []).filter((row: JsonObject) =>
+    isActiveSubscriptionStatus(row.status)
+  );
+
+  let modelsAccess = false;
+  let outlookAccess = false;
+  const products: string[] = [];
+
+  for (const row of activeRows) {
+    const mapped = entitlementsForPlan(row.plan_id);
+    modelsAccess ||= mapped.modelsAccess;
+    outlookAccess ||= mapped.outlookAccess;
+    products.push(mapped.product);
+  }
+
+  if (!activeRows.length) {
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({
+        plan: "free",
+        subscription_status: fallbackStatus,
+        subscription_provider: "paypal",
+        subscription_expires_at: new Date().toISOString(),
+        subscription_updated_at: new Date().toISOString(),
+        models_access: false,
+        outlook_access: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (profileError) throw profileError;
+
+    return {
+      activeSubscriptions: 0,
+      products: [],
+      modelsAccess: false,
+      outlookAccess: false,
+    };
+  }
+
+  const sorted = [...activeRows].sort((left: JsonObject, right: JsonObject) =>
+    String(right.updated_at ?? "").localeCompare(String(left.updated_at ?? ""))
+  );
+  const representative = sorted[0];
+
+  const expiryCandidates = activeRows
+    .map((row: JsonObject) => safeIso(row.next_billing_time))
+    .filter((value: string | null): value is string => Boolean(value))
+    .sort();
+  const expiry =
+    expiryCandidates[expiryCandidates.length - 1] ??
+    estimateExpiry(representative.raw ?? {}, 32);
+
+  const { error: profileError } = await admin
     .from("profiles")
     .update({
       plan: "pro",
       subscription_status: "active",
       subscription_provider: "paypal",
-      provider_customer_id:
-        resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ?? null,
-      provider_subscription_id: subscriptionId,
-      paypal_plan_id: planId ?? null,
-      subscription_started_at: resource?.start_time
-        ? safeIso(resource.start_time)
-        : undefined,
+      provider_customer_id: representative.payer_id ?? null,
+      provider_subscription_id: representative.paypal_subscription_id ?? null,
+      paypal_plan_id: activeRows.length === 1 ? representative.plan_id ?? null : null,
       subscription_expires_at: expiry,
       subscription_updated_at: new Date().toISOString(),
-      models_access: entitlements.modelsAccess,
-      outlook_access: entitlements.outlookAccess,
+      models_access: modelsAccess,
+      outlook_access: outlookAccess,
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId);
 
-  if (error) throw error;
-  return entitlements;
-}
+  if (profileError) throw profileError;
 
-async function downgradeProfile(
-  admin: any,
-  userId: string,
-  status: "cancelled" | "expired" | "past_due"
-) {
-  const { error } = await admin
-    .from("profiles")
-    .update({
-      plan: "free",
-      subscription_status: status,
-      subscription_expires_at: new Date().toISOString(),
-      subscription_updated_at: new Date().toISOString(),
-      models_access: false,
-      outlook_access: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId);
-
-  if (error) throw error;
+  return {
+    activeSubscriptions: activeRows.length,
+    products: [...new Set(products)],
+    modelsAccess,
+    outlookAccess,
+  };
 }
 
 async function handleSubscriptionEvent(
@@ -476,7 +521,7 @@ async function handleSubscriptionEvent(
 
   if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {
     await upsertSubscription(admin, canonical, userId, "ACTIVE");
-    const entitlements = await activateProfile(admin, userId, canonical);
+    const entitlements = await recomputeProfileEntitlements(admin, userId);
     return { userId, action: "activated", subscriptionId, entitlements };
   }
 
@@ -484,44 +529,69 @@ async function handleSubscriptionEvent(
     await upsertSubscription(admin, canonical, userId, status || "UPDATED");
 
     if (status === "ACTIVE") {
-      const entitlements = await activateProfile(admin, userId, canonical);
+      const entitlements = await recomputeProfileEntitlements(admin, userId);
       return { userId, action: "updated_active", subscriptionId, entitlements };
     }
 
     if (status === "CANCELLED") {
-      await downgradeProfile(admin, userId, "cancelled");
-      return { userId, action: "updated_cancelled", subscriptionId };
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "cancelled"
+      );
+      return { userId, action: "updated_cancelled", subscriptionId, entitlements };
     }
 
     if (status === "EXPIRED") {
-      await downgradeProfile(admin, userId, "expired");
-      return { userId, action: "updated_expired", subscriptionId };
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "expired"
+      );
+      return { userId, action: "updated_expired", subscriptionId, entitlements };
     }
 
     if (status === "SUSPENDED") {
-      await downgradeProfile(admin, userId, "past_due");
-      return { userId, action: "updated_suspended", subscriptionId };
+      const entitlements = await recomputeProfileEntitlements(
+        admin,
+        userId,
+        "past_due"
+      );
+      return { userId, action: "updated_suspended", subscriptionId, entitlements };
     }
 
-    return { userId, action: "updated_no_entitlement_change", subscriptionId, status };
+    return {
+      userId,
+      action: "updated_no_entitlement_change",
+      subscriptionId,
+      status,
+    };
   }
 
   if (eventType === "PAYMENT.SALE.COMPLETED") {
     await upsertSubscription(admin, canonical, userId, "ACTIVE");
-    const entitlements = await activateProfile(admin, userId, canonical);
+    const entitlements = await recomputeProfileEntitlements(admin, userId);
     return { userId, action: "payment_completed", subscriptionId, entitlements };
   }
 
   if (eventType === "BILLING.SUBSCRIPTION.CANCELLED") {
     await upsertSubscription(admin, canonical, userId, "CANCELLED");
-    await downgradeProfile(admin, userId, "cancelled");
-    return { userId, action: "cancelled", subscriptionId };
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "cancelled"
+    );
+    return { userId, action: "cancelled", subscriptionId, entitlements };
   }
 
   if (eventType === "BILLING.SUBSCRIPTION.EXPIRED") {
     await upsertSubscription(admin, canonical, userId, "EXPIRED");
-    await downgradeProfile(admin, userId, "expired");
-    return { userId, action: "expired", subscriptionId };
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "expired"
+    );
+    return { userId, action: "expired", subscriptionId, entitlements };
   }
 
   if (
@@ -532,8 +602,12 @@ async function handleSubscriptionEvent(
     eventType === "PAYMENT.SALE.REFUNDED"
   ) {
     await upsertSubscription(admin, canonical, userId, "PAST_DUE");
-    await downgradeProfile(admin, userId, "past_due");
-    return { userId, action: "past_due", subscriptionId };
+    const entitlements = await recomputeProfileEntitlements(
+      admin,
+      userId,
+      "past_due"
+    );
+    return { userId, action: "past_due", subscriptionId, entitlements };
   }
 
   await upsertSubscription(admin, canonical, userId, status || "IGNORED");
