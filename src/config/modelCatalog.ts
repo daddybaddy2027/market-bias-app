@@ -59,7 +59,7 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     displayName: "GBPUSD 12h Final V2",
     shortName: "GBPUSD 12h",
     kind: "direction",
-    tier: "Free",
+    tier: "Pro",
     family: "clean_pro_final_app_v2",
     purpose: "Selective 12-hour GBPUSD directional bias with live production history.",
     status: "production",
