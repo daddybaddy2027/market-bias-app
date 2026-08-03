@@ -4,7 +4,7 @@ $SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendRoot = "C:\Users\Veljko\Desktop\Multi-asset-12h"
 $TargetDir = Join-Path $BackendRoot "backend_integration"
 
-Write-Host "Installing final 13-model backend integration..." -ForegroundColor Cyan
+Write-Host "Installing Production Integrity V2 backend integration..." -ForegroundColor Cyan
 Write-Host "Source: $SourceDir"
 Write-Host "Target: $TargetDir"
 
@@ -23,8 +23,10 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "Backend integration installed." -ForegroundColor Green
-Write-Host "Test command:" -ForegroundColor Yellow
-Write-Host "python -u $TargetDir\merge_13_model_board.py"
+Write-Host "Active production models:" -ForegroundColor Yellow
+Write-Host "- GBPUSD_12H_FINAL_APP_V2"
+Write-Host "- EURUSD_3H_PROD_V1"
+Write-Host "- EURUSD_6H_FINAL_APP_V2"
 Write-Host ""
-Write-Host "Full upload command:" -ForegroundColor Yellow
+Write-Host "One-shot verification and upload:" -ForegroundColor Yellow
 Write-Host "python -u $TargetDir\13_upload_to_supabase.py"
