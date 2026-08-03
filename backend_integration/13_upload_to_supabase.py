@@ -4,8 +4,6 @@ from pathlib import Path
 import importlib.util
 import json
 import shutil
-import subprocess
-import sys
 from typing import Any
 
 import numpy as np
@@ -23,10 +21,6 @@ APP_SIGNALS_PATH = LIVE_OUT_DIR / "app_signals_latest.json"
 ORIGINAL_HISTORY = LIVE_OUT_DIR / "live_performance_full_report.csv"
 FILTERED_HISTORY = LIVE_OUT_DIR / "live_performance_production_integrity_v2.csv"
 ACTIVE_KEYS = set(FINAL_MODEL_TIERS)
-
-
-def run(path: Path) -> None:
-    subprocess.run([sys.executable, "-u", str(path)], cwd=BASE_DIR, check=True)
 
 
 def load_uploader(path: Path):
@@ -94,7 +88,7 @@ def mark_non_overlapping(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
     frame["is_non_overlapping"] = False
 
-    for model_key, indexes in frame.groupby("model_key").groups.items():
+    for _, indexes in frame.groupby("model_key").groups.items():
         ordered = frame.loc[list(indexes)].sort_values("prediction_time_utc")
         last_selected: pd.Timestamp | None = None
 
@@ -144,8 +138,7 @@ def normalize_history(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.sort_values("prediction_time_utc").drop_duplicates(
         subset=keys, keep="last"
     )
-    frame = mark_non_overlapping(frame)
-    return frame
+    return mark_non_overlapping(frame)
 
 
 def build_filtered_history() -> None:
@@ -234,13 +227,9 @@ def main() -> None:
     if POLICY_SOURCE.exists():
         shutil.copy2(POLICY_SOURCE, POLICY_TARGET)
 
-    # The old merger may still collect research outputs locally. Immediately
-    # after it runs, the strict production allowlist removes them from every
-    # public payload before Supabase sees anything.
-    legacy_merger = INTEGRATION_DIR / "merge_13_model_board.py"
-    if legacy_merger.exists():
-        run(legacy_merger)
-
+    # The scheduler already builds the current app signal payload. The upload
+    # layer only applies the strict production allowlist; it never reconstructs
+    # the retired 13-model board.
     filter_app_signals()
     build_filtered_history()
 
