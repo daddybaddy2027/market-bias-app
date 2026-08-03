@@ -1,1 +1,1 @@
-export { default } from "../screens/PerformanceScreen";
+export { default } from "../screens/PerformanceIntegrityScreen";
