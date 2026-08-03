@@ -12,7 +12,6 @@
 //   one product cannot revoke another product that is still paid.
 // ============================================================
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type PayPalEnv = "sandbox" | "live";
@@ -23,6 +22,183 @@ type Entitlements = {
   outlookAccess: boolean;
 };
 type ProfileFallbackStatus = "cancelled" | "expired" | "past_due";
+
+export const HANDLED_PAYPAL_EVENT_TYPES = new Set([
+  "BILLING.SUBSCRIPTION.CREATED",
+  "BILLING.SUBSCRIPTION.ACTIVATED",
+  "BILLING.SUBSCRIPTION.UPDATED",
+  "BILLING.SUBSCRIPTION.CANCELLED",
+  "BILLING.SUBSCRIPTION.EXPIRED",
+  "BILLING.SUBSCRIPTION.SUSPENDED",
+  "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+  "PAYMENT.SALE.COMPLETED",
+  "PAYMENT.SALE.DENIED",
+  "PAYMENT.SALE.REVERSED",
+  "PAYMENT.SALE.REFUNDED",
+]);
+
+type FetchRetryOptions = {
+  fetchImpl?: typeof fetch;
+  maxAttempts?: number;
+  timeoutMs?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  sleepImpl?: (milliseconds: number) => Promise<void>;
+  randomImpl?: () => number;
+  nowImpl?: () => number;
+};
+
+const DEFAULT_FETCH_ATTEMPTS = 4;
+const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
+const DEFAULT_RETRY_BASE_DELAY_MS = 300;
+const DEFAULT_RETRY_MAX_DELAY_MS = 5_000;
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export function isHandledPayPalEventType(eventType: unknown) {
+  return HANDLED_PAYPAL_EVENT_TYPES.has(String(eventType ?? ""));
+}
+
+export function getPayPalEventId(event: JsonObject) {
+  const eventId = typeof event?.id === "string" ? event.id.trim() : "";
+  return eventId || null;
+}
+
+export function parseRetryAfterMs(
+  value: string | null,
+  now = Date.now(),
+): number | null {
+  if (!value) return null;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1_000);
+  }
+
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return null;
+  return Math.max(0, retryAt - now);
+}
+
+function shouldRetryStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryDelayMs(
+  attempt: number,
+  response: Response | null,
+  options: Required<
+    Pick<
+      FetchRetryOptions,
+      "baseDelayMs" | "maxDelayMs" | "randomImpl" | "nowImpl"
+    >
+  >,
+) {
+  const retryAfter = parseRetryAfterMs(
+    response?.headers.get("retry-after") ?? null,
+    options.nowImpl(),
+  );
+
+  if (retryAfter !== null) {
+    return Math.min(retryAfter, options.maxDelayMs);
+  }
+
+  const exponential = Math.min(
+    options.baseDelayMs * 2 ** Math.max(0, attempt - 1),
+    options.maxDelayMs,
+  );
+  const jitter = Math.round(exponential * 0.2 * options.randomImpl());
+  return Math.min(exponential + jitter, options.maxDelayMs);
+}
+
+export async function fetchWithRetry(
+  input: string | URL | Request,
+  init: RequestInit = {},
+  options: FetchRetryOptions = {},
+) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const maxAttempts = Math.max(
+    1,
+    options.maxAttempts ?? DEFAULT_FETCH_ATTEMPTS,
+  );
+  const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+  const baseDelayMs = Math.max(
+    0,
+    options.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS,
+  );
+  const maxDelayMs = Math.max(
+    baseDelayMs,
+    options.maxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS,
+  );
+  const sleepImpl = options.sleepImpl ?? sleep;
+  const randomImpl = options.randomImpl ?? Math.random;
+  const nowImpl = options.nowImpl ?? Date.now;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const upstreamSignal = init.signal;
+    const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+
+    if (upstreamSignal?.aborted) {
+      abortFromUpstream();
+    } else {
+      upstreamSignal?.addEventListener("abort", abortFromUpstream, {
+        once: true,
+      });
+    }
+
+    const timeoutId = setTimeout(
+      () =>
+        controller.abort(
+          new DOMException("PayPal request timed out", "TimeoutError"),
+        ),
+      timeoutMs,
+    );
+    let response: Response | null = null;
+
+    try {
+      response = await fetchImpl(input, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      if (!shouldRetryStatus(response.status) || attempt === maxAttempts) {
+        return response;
+      }
+
+      await response.body?.cancel().catch(() => undefined);
+    } catch (error) {
+      if (upstreamSignal?.aborted) throw error;
+      lastError = error;
+
+      if (attempt === maxAttempts) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `PayPal request failed after ${maxAttempts} attempts: ${detail}`,
+        );
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+    }
+
+    await sleepImpl(
+      retryDelayMs(attempt, response, {
+        baseDelayMs,
+        maxDelayMs,
+        randomImpl,
+        nowImpl,
+      }),
+    );
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("PayPal request failed without a response.");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,11 +231,55 @@ function optionalEnv(...names: string[]) {
   return null;
 }
 
-function getPayPalBaseUrl() {
-  const env = (Deno.env.get("PAYPAL_ENV") ?? "live").toLowerCase() as PayPalEnv;
+export function getPayPalEnvironment(): PayPalEnv {
+  const env = (Deno.env.get("PAYPAL_ENV") ?? "").trim().toLowerCase();
+
+  if (env !== "sandbox" && env !== "live") {
+    throw new Error("PAYPAL_ENV must be explicitly set to sandbox or live.");
+  }
+
+  return env;
+}
+
+export function getPayPalBaseUrl() {
+  const env = getPayPalEnvironment();
   return env === "sandbox"
     ? "https://api-m.sandbox.paypal.com"
     : "https://api-m.paypal.com";
+}
+
+function safePayPalErrorData(data: unknown) {
+  if (!data || typeof data !== "object") return null;
+
+  const source = data as JsonObject;
+  return {
+    name: typeof source.name === "string"
+      ? source.name.slice(0, 160)
+      : undefined,
+    message: typeof source.message === "string"
+      ? source.message.slice(0, 500)
+      : undefined,
+    debug_id: typeof source.debug_id === "string"
+      ? source.debug_id.slice(0, 160)
+      : undefined,
+    details: Array.isArray(source.details)
+      ? source.details.slice(0, 10)
+      : undefined,
+  };
+}
+
+function paypalApiError(operation: string, response: Response, data: unknown) {
+  const safeData = safePayPalErrorData(data);
+  const detail = safeData ? ` ${JSON.stringify(safeData)}` : "";
+  return new Error(`${operation} failed: HTTP ${response.status}.${detail}`);
+}
+
+async function responseJson(response: Response) {
+  try {
+    return (await response.json()) as JsonObject;
+  } catch (_) {
+    return {} as JsonObject;
+  }
 }
 
 function getSupabaseAdmin() {
@@ -80,7 +300,7 @@ function getSupabaseAdmin() {
 
   if (!key || typeof key !== "string") {
     throw new Error(
-      "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default"
+      "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default",
     );
   }
 
@@ -92,13 +312,13 @@ function getSupabaseAdmin() {
   });
 }
 
-async function getPayPalAccessToken() {
+export async function getPayPalAccessToken() {
   const clientId = requiredEnv("PAYPAL_CLIENT_ID");
   const clientSecret = requiredEnv("PAYPAL_CLIENT_SECRET");
   const baseUrl = getPayPalBaseUrl();
   const auth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
+  const response = await fetchWithRetry(`${baseUrl}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
@@ -107,12 +327,10 @@ async function getPayPalAccessToken() {
     body: "grant_type=client_credentials",
   });
 
-  const data = await response.json();
+  const data = await responseJson(response);
 
   if (!response.ok || !data.access_token) {
-    throw new Error(
-      `PayPal OAuth failed: ${response.status} ${JSON.stringify(data)}`
-    );
+    throw paypalApiError("PayPal OAuth", response, data);
   }
 
   return data.access_token as string;
@@ -137,7 +355,7 @@ async function verifyPayPalWebhook(req: Request, event: JsonObject) {
     if (!value) throw new Error(`Missing PayPal verification field: ${key}`);
   }
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${baseUrl}/v1/notifications/verify-webhook-signature`,
     {
       method: "POST",
@@ -146,42 +364,38 @@ async function verifyPayPalWebhook(req: Request, event: JsonObject) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-    }
+    },
   );
 
-  const data = await response.json();
+  const data = await responseJson(response);
 
   if (!response.ok) {
-    throw new Error(
-      `PayPal webhook verification request failed: ${response.status} ${JSON.stringify(
-        data
-      )}`
-    );
+    throw paypalApiError("PayPal webhook verification", response, data);
   }
 
   return data.verification_status === "SUCCESS";
 }
 
-async function fetchPayPalSubscription(subscriptionId: string) {
+export async function fetchPayPalSubscription(subscriptionId: string) {
   const accessToken = await getPayPalAccessToken();
-  const response = await fetch(
-    `${getPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(
-      subscriptionId
-    )}`,
+  const response = await fetchWithRetry(
+    `${getPayPalBaseUrl()}/v1/billing/subscriptions/${
+      encodeURIComponent(
+        subscriptionId,
+      )
+    }`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
-  const data = await response.json();
+  const data = await responseJson(response);
 
   if (!response.ok) {
-    throw new Error(
-      `PayPal subscription lookup failed: ${response.status} ${JSON.stringify(data)}`
-    );
+    throw paypalApiError("PayPal subscription lookup", response, data);
   }
 
   return data as JsonObject;
@@ -214,19 +428,20 @@ function estimateExpiry(resource: JsonObject, fallbackDays = 32) {
 function looksLikeUuid(value: unknown) {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
 function getSubscriptionIdFromResource(resource: JsonObject) {
   return (
     resource?.id ??
-    resource?.billing_agreement_id ??
-    resource?.subscription_id ??
-    resource?.supplementary_data?.related_ids?.billing_agreement_id ??
-    null
+      resource?.billing_agreement_id ??
+      resource?.subscription_id ??
+      resource?.supplementary_data?.related_ids?.billing_agreement_id ??
+      null
   );
 }
 
@@ -234,7 +449,7 @@ function entitlementsForPlan(planId: unknown): Entitlements {
   const normalized = String(planId ?? "").trim();
   const modelsPlan = optionalEnv(
     "PAYPAL_MODELS_PLAN_ID",
-    "PAYPAL_PRO_MONTHLY_PLAN_ID"
+    "PAYPAL_PRO_MONTHLY_PLAN_ID",
   );
   const outlookPlan = optionalEnv("PAYPAL_OUTLOOK_PLAN_ID");
   const completePlan = optionalEnv("PAYPAL_COMPLETE_PLAN_ID");
@@ -264,7 +479,9 @@ function entitlementsForPlan(planId: unknown): Entitlements {
   }
 
   throw new Error(
-    `PayPal plan is not mapped to an entitlement: ${normalized || "missing plan_id"}`
+    `PayPal plan is not mapped to an entitlement: ${
+      normalized || "missing plan_id"
+    }`,
   );
 }
 
@@ -273,13 +490,17 @@ function isActiveSubscriptionStatus(value: unknown) {
 }
 
 async function canonicalSubscriptionResource(resource: JsonObject) {
-  if (resource?.plan_id && resource?.id && String(resource.id).startsWith("I-")) {
+  if (
+    resource?.plan_id && resource?.id && String(resource.id).startsWith("I-")
+  ) {
     return resource;
   }
 
   const subscriptionId = getSubscriptionIdFromResource(resource);
   if (!subscriptionId) {
-    throw new Error("Could not resolve PayPal subscription ID from event resource.");
+    throw new Error(
+      "Could not resolve PayPal subscription ID from event resource.",
+    );
   }
 
   return await fetchPayPalSubscription(String(subscriptionId));
@@ -289,8 +510,8 @@ async function resolveUserId(admin: any, resource: JsonObject) {
   const customId = resource?.custom_id;
   if (looksLikeUuid(customId)) return customId as string;
 
-  const email =
-    resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
+  const email = resource?.subscriber?.email_address ??
+    resource?.payer?.email_address ?? null;
 
   if (email) {
     const { data, error } = await admin
@@ -307,7 +528,7 @@ async function resolveUserId(admin: any, resource: JsonObject) {
 
 async function resolveUserIdWithStoredSubscription(
   admin: any,
-  resource: JsonObject
+  resource: JsonObject,
 ) {
   let userId = await resolveUserId(admin, resource);
   const subscriptionId = getSubscriptionIdFromResource(resource);
@@ -325,8 +546,12 @@ async function resolveUserIdWithStoredSubscription(
   return userId;
 }
 
-async function saveEvent(admin: any, event: JsonObject) {
-  const eventId = String(event.id ?? crypto.randomUUID());
+export async function reserveEvent(admin: any, event: JsonObject) {
+  const eventId = getPayPalEventId(event);
+  if (!eventId) {
+    throw new Error("PayPal webhook event is missing a stable event ID.");
+  }
+
   const eventType = String(event.event_type ?? "UNKNOWN");
   const resource = event.resource ?? {};
   const subscriptionId = getSubscriptionIdFromResource(resource);
@@ -340,20 +565,42 @@ async function saveEvent(admin: any, event: JsonObject) {
   });
 
   if (error) {
-    if (error.code === "23505") return { eventId, duplicate: true };
+    if (error.code === "23505") {
+      const { data, error: lookupError } = await admin
+        .from("paypal_webhook_events")
+        .select("processed,processing_error")
+        .eq("event_id", eventId)
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+      if (!data) {
+        throw new Error("Duplicate PayPal event could not be reloaded.");
+      }
+
+      return {
+        eventId,
+        alreadyProcessed: data.processed === true,
+        retryingFailedEvent: data.processed !== true,
+      };
+    }
+
     throw error;
   }
 
-  return { eventId, duplicate: false };
+  return {
+    eventId,
+    alreadyProcessed: false,
+    retryingFailedEvent: false,
+  };
 }
 
 async function markEvent(
   admin: any,
   eventId: string,
   processed: boolean,
-  processingError?: string
+  processingError?: string,
 ) {
-  await admin
+  const { error } = await admin
     .from("paypal_webhook_events")
     .update({
       processed,
@@ -361,21 +608,25 @@ async function markEvent(
       processed_at: new Date().toISOString(),
     })
     .eq("event_id", eventId);
+
+  if (error) throw error;
 }
 
 async function upsertSubscription(
   admin: any,
   resource: JsonObject,
   userId: string,
-  statusOverride?: string
+  statusOverride?: string,
 ) {
   const subscriptionId = getSubscriptionIdFromResource(resource);
-  if (!subscriptionId) throw new Error("Missing subscription ID during upsert.");
+  if (!subscriptionId) {
+    throw new Error("Missing subscription ID during upsert.");
+  }
 
-  const email =
-    resource?.subscriber?.email_address ?? resource?.payer?.email_address ?? null;
-  const payerId =
-    resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ?? null;
+  const email = resource?.subscriber?.email_address ??
+    resource?.payer?.email_address ?? null;
+  const payerId = resource?.subscriber?.payer_id ?? resource?.payer?.payer_id ??
+    null;
   const planId = resource?.plan_id ?? null;
   const status = statusOverride ?? resource?.status ?? "UNKNOWN";
 
@@ -392,7 +643,7 @@ async function upsertSubscription(
       raw: resource,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "paypal_subscription_id" }
+    { onConflict: "paypal_subscription_id" },
   );
 
   if (error) throw error;
@@ -402,12 +653,12 @@ async function upsertSubscription(
 async function recomputeProfileEntitlements(
   admin: any,
   userId: string,
-  fallbackStatus: ProfileFallbackStatus = "cancelled"
+  fallbackStatus: ProfileFallbackStatus = "cancelled",
 ) {
   const { data, error } = await admin
     .from("paypal_subscriptions")
     .select(
-      "paypal_subscription_id,status,plan_id,payer_id,next_billing_time,raw,updated_at"
+      "paypal_subscription_id,status,plan_id,payer_id,next_billing_time,raw,updated_at",
     )
     .eq("user_id", userId);
 
@@ -462,8 +713,7 @@ async function recomputeProfileEntitlements(
     .map((row: JsonObject) => safeIso(row.next_billing_time))
     .filter((value: string | null): value is string => Boolean(value))
     .sort();
-  const expiry =
-    expiryCandidates[expiryCandidates.length - 1] ??
+  const expiry = expiryCandidates[expiryCandidates.length - 1] ??
     estimateExpiry(representative.raw ?? {}, 32);
 
   const { error: profileError } = await admin
@@ -474,7 +724,9 @@ async function recomputeProfileEntitlements(
       subscription_provider: "paypal",
       provider_customer_id: representative.payer_id ?? null,
       provider_subscription_id: representative.paypal_subscription_id ?? null,
-      paypal_plan_id: activeRows.length === 1 ? representative.plan_id ?? null : null,
+      paypal_plan_id: activeRows.length === 1
+        ? representative.plan_id ?? null
+        : null,
       subscription_expires_at: expiry,
       subscription_updated_at: new Date().toISOString(),
       models_access: modelsAccess,
@@ -496,7 +748,7 @@ async function recomputeProfileEntitlements(
 async function handleSubscriptionEvent(
   admin: any,
   eventType: string,
-  eventResource: JsonObject
+  eventResource: JsonObject,
 ) {
   const canonical = await canonicalSubscriptionResource(eventResource);
   const subscriptionId = getSubscriptionIdFromResource(canonical);
@@ -508,7 +760,7 @@ async function handleSubscriptionEvent(
 
   if (!userId) {
     throw new Error(
-      "Could not resolve Supabase user_id from PayPal custom_id, email or stored subscription."
+      "Could not resolve Supabase user_id from PayPal custom_id, email or stored subscription.",
     );
   }
 
@@ -537,27 +789,42 @@ async function handleSubscriptionEvent(
       const entitlements = await recomputeProfileEntitlements(
         admin,
         userId,
-        "cancelled"
+        "cancelled",
       );
-      return { userId, action: "updated_cancelled", subscriptionId, entitlements };
+      return {
+        userId,
+        action: "updated_cancelled",
+        subscriptionId,
+        entitlements,
+      };
     }
 
     if (status === "EXPIRED") {
       const entitlements = await recomputeProfileEntitlements(
         admin,
         userId,
-        "expired"
+        "expired",
       );
-      return { userId, action: "updated_expired", subscriptionId, entitlements };
+      return {
+        userId,
+        action: "updated_expired",
+        subscriptionId,
+        entitlements,
+      };
     }
 
     if (status === "SUSPENDED") {
       const entitlements = await recomputeProfileEntitlements(
         admin,
         userId,
-        "past_due"
+        "past_due",
       );
-      return { userId, action: "updated_suspended", subscriptionId, entitlements };
+      return {
+        userId,
+        action: "updated_suspended",
+        subscriptionId,
+        entitlements,
+      };
     }
 
     return {
@@ -571,7 +838,12 @@ async function handleSubscriptionEvent(
   if (eventType === "PAYMENT.SALE.COMPLETED") {
     await upsertSubscription(admin, canonical, userId, "ACTIVE");
     const entitlements = await recomputeProfileEntitlements(admin, userId);
-    return { userId, action: "payment_completed", subscriptionId, entitlements };
+    return {
+      userId,
+      action: "payment_completed",
+      subscriptionId,
+      entitlements,
+    };
   }
 
   if (eventType === "BILLING.SUBSCRIPTION.CANCELLED") {
@@ -579,7 +851,7 @@ async function handleSubscriptionEvent(
     const entitlements = await recomputeProfileEntitlements(
       admin,
       userId,
-      "cancelled"
+      "cancelled",
     );
     return { userId, action: "cancelled", subscriptionId, entitlements };
   }
@@ -589,7 +861,7 @@ async function handleSubscriptionEvent(
     const entitlements = await recomputeProfileEntitlements(
       admin,
       userId,
-      "expired"
+      "expired",
     );
     return { userId, action: "expired", subscriptionId, entitlements };
   }
@@ -605,7 +877,7 @@ async function handleSubscriptionEvent(
     const entitlements = await recomputeProfileEntitlements(
       admin,
       userId,
-      "past_due"
+      "past_due",
     );
     return { userId, action: "past_due", subscriptionId, entitlements };
   }
@@ -614,7 +886,7 @@ async function handleSubscriptionEvent(
   return { userId, action: "ignored", subscriptionId, status };
 }
 
-serve(async (req: Request) => {
+export async function handlePayPalWebhookRequest(req: Request) {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -631,8 +903,12 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const admin = getSupabaseAdmin();
-  let eventId = String(event.id ?? crypto.randomUUID());
+  const eventId = getPayPalEventId(event);
+  if (!eventId) {
+    return jsonResponse({ error: "PayPal webhook event ID is required" }, 400);
+  }
+
+  let admin: any = null;
 
   try {
     const verified = await verifyPayPalWebhook(req, event);
@@ -640,18 +916,33 @@ serve(async (req: Request) => {
     if (!verified) {
       return jsonResponse(
         { error: "PayPal webhook signature verification failed" },
-        401
+        401,
       );
     }
 
-    const saved = await saveEvent(admin, event);
-    eventId = saved.eventId;
+    admin = getSupabaseAdmin();
+    const saved = await reserveEvent(admin, event);
 
-    if (saved.duplicate) {
-      return jsonResponse({ ok: true, duplicate: true, event_id: eventId });
+    if (saved.alreadyProcessed) {
+      return jsonResponse({
+        ok: true,
+        duplicate: true,
+        event_id: eventId,
+      });
     }
 
     const eventType = String(event.event_type ?? "UNKNOWN");
+
+    if (!isHandledPayPalEventType(eventType)) {
+      await markEvent(admin, eventId, true);
+      return jsonResponse({
+        ok: true,
+        ignored: true,
+        event_id: eventId,
+        event_type: eventType,
+      });
+    }
+
     const resource = event.resource ?? {};
     const result = await handleSubscriptionEvent(admin, eventType, resource);
 
@@ -661,15 +952,23 @@ serve(async (req: Request) => {
       ok: true,
       event_id: eventId,
       event_type: eventType,
+      retried: saved.retryingFailedEvent,
       result,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = (
+      error instanceof Error ? error.message : String(error)
+    ).slice(0, 2_000);
 
-    try {
-      await markEvent(admin, eventId, false, message);
-    } catch (_) {
-      // ignore event update failure
+    if (admin) {
+      try {
+        await markEvent(admin, eventId, false, message);
+      } catch (markError) {
+        console.error(
+          "PayPal webhook event status update failed:",
+          markError instanceof Error ? markError.message : String(markError),
+        );
+      }
     }
 
     console.error("PayPal webhook error:", message);
@@ -677,9 +976,14 @@ serve(async (req: Request) => {
     return jsonResponse(
       {
         ok: false,
-        error: message,
+        error: "Webhook processing failed",
+        event_id: eventId,
       },
-      500
+      500,
     );
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(handlePayPalWebhookRequest);
+}
