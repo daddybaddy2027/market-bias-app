@@ -35,6 +35,8 @@ export type ExtendedHistoryRow = {
   payload: Record<string, any>;
 };
 
+const MIN_SCORABLE_PIPS = 5;
+
 const HISTORY_COLUMNS = [
   "asset",
   "horizon_h",
@@ -87,6 +89,13 @@ function asBoolean(value: unknown): boolean | null {
   return null;
 }
 
+function scorableDirectionHit(value: unknown, netPips: number | null) {
+  const directionHit = asBoolean(value);
+  if (directionHit === null) return null;
+  if (netPips === null || Math.abs(netPips) < MIN_SCORABLE_PIPS) return null;
+  return directionHit;
+}
+
 function firstString(...values: unknown[]) {
   for (const value of values) {
     if (value !== null && value !== undefined && String(value).trim()) {
@@ -119,6 +128,7 @@ function mapRemoteRows(
       const payload = asObject(raw.payload);
       const modelKey = rowKey({ ...raw, payload });
       const bias = String(raw.bias ?? payload.bias ?? "Neutral");
+      const netPips = asNumber(payload.signed_pips ?? payload.net_pips);
 
       return {
         asset: String(raw.asset ?? model.asset).toUpperCase(),
@@ -138,7 +148,10 @@ function mapRemoteRows(
         ),
         actualClose: asNumber(raw.actual_close ?? payload.actual_close),
         actualReturn: asNumber(raw.actual_return ?? payload.actual_log_return),
-        directionHit: asBoolean(raw.direction_hit ?? payload.direction_hit),
+        directionHit: scorableDirectionHit(
+          raw.direction_hit ?? payload.direction_hit,
+          netPips
+        ),
         rangeCloseHit: asBoolean(raw.range_close_hit ?? payload.range_close_hit),
         rangePathHit: asBoolean(raw.range_path_hit ?? payload.range_path_hit),
         evaluationStatus: String(
@@ -147,7 +160,7 @@ function mapRemoteRows(
         confidence: asNumber(
           raw.confidence ?? payload.confidence ?? payload.threshold_confidence
         ),
-        netPips: asNumber(payload.signed_pips ?? payload.net_pips),
+        netPips,
         grossPips: asNumber(payload.gross_pips),
         forecastResult: firstString(
           payload.terminal_forecast_result,
