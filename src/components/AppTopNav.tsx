@@ -6,7 +6,14 @@ import { useAuth } from "../providers/AuthProvider";
 
 type NavItem = {
   label: string;
-  route: "/" | "/performance" | "/outlook" | "/pricing" | "/account" | "/admin-outlook";
+  route:
+    | "/"
+    | "/performance"
+    | "/outlook"
+    | "/pricing"
+    | "/account"
+    | "/xau-live"
+    | "/admin-outlook";
 };
 
 const BASE_ITEMS: NavItem[] = [
@@ -20,8 +27,12 @@ const BASE_ITEMS: NavItem[] = [
 export function AppTopNav() {
   const pathname = usePathname();
   const { isAdmin } = useAuth();
-  const items = isAdmin
-    ? [...BASE_ITEMS, { label: "Publish", route: "/admin-outlook" as const }]
+  const items: NavItem[] = isAdmin
+    ? [
+        ...BASE_ITEMS,
+        { label: "XAU Live", route: "/xau-live" },
+        { label: "Publish", route: "/admin-outlook" },
+      ]
     : BASE_ITEMS;
 
   return (
