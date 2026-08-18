@@ -115,10 +115,19 @@ alter table public.xau_bot_trades enable row level security;
 alter table public.xau_bot_equity enable row level security;
 alter table public.xau_bot_candles enable row level security;
 
+-- Browser clients can only read through the authenticated Pro/Admin RLS policies below.
 grant select on public.xau_bot_state to authenticated;
 grant select on public.xau_bot_trades to authenticated;
 grant select on public.xau_bot_equity to authenticated;
 grant select on public.xau_bot_candles to authenticated;
+
+-- The local Python shadow backend authenticates as service_role and requires
+-- explicit table privileges in addition to bypassing RLS.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on public.xau_bot_state to service_role;
+grant select, insert, update, delete on public.xau_bot_trades to service_role;
+grant select, insert, update, delete on public.xau_bot_equity to service_role;
+grant select, insert, update, delete on public.xau_bot_candles to service_role;
 
 revoke all on public.xau_bot_state from anon;
 revoke all on public.xau_bot_trades from anon;
