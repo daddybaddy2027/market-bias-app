@@ -2,6 +2,25 @@ import { supabase } from "../lib/supabase";
 
 export type XauBotTimeframe = "M15" | "H1";
 
+export type XauBotPredictionPayload = {
+  candidate?: boolean | null;
+  pred_asymmetry?: number | null;
+  abs_asymmetry?: number | null;
+  pred_range_atr?: number | null;
+  pred_up_atr?: number | null;
+  pred_down_atr?: number | null;
+  feature_health?: {
+    latest_non_null_ratio?: number | null;
+    [key: string]: unknown;
+  } | null;
+  pending_count?: number | null;
+  event_count?: number | null;
+  selected_variant?: string | null;
+  shadow_only?: boolean | null;
+  live_money_authorized?: boolean | null;
+  [key: string]: unknown;
+};
+
 export type XauBotState = {
   id: string;
   updated_at: string;
@@ -31,7 +50,7 @@ export type XauBotState = {
   pending_route: string | null;
   next_decision_at: string | null;
   source_version: string | null;
-  payload?: Record<string, unknown> | null;
+  payload?: XauBotPredictionPayload | null;
 };
 
 export type XauBotTrade = {
