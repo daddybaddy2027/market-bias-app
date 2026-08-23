@@ -6,12 +6,20 @@ import { useAuth } from "../providers/AuthProvider";
 
 type NavItem = {
   label: string;
-  route: "/" | "/performance" | "/outlook" | "/pricing" | "/account" | "/admin-outlook";
+  route:
+    | "/"
+    | "/performance"
+    | "/xau-bot"
+    | "/outlook"
+    | "/pricing"
+    | "/account"
+    | "/admin-outlook";
 };
 
 const BASE_ITEMS: NavItem[] = [
   { label: "Overview", route: "/" },
   { label: "Performance", route: "/performance" },
+  { label: "XAU Bot", route: "/xau-bot" },
   { label: "Outlook", route: "/outlook" },
   { label: "Pricing", route: "/pricing" },
   { label: "Account", route: "/account" },
