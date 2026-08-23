@@ -9,8 +9,8 @@ declare global {
   interface Window { paypalSandbox?: any; }
 }
 
-const CLIENT_ID = process.env.EXPO_PUBLIC_PAYPAL_SANDBOX_CLIENT_ID ?? "";
-const MODELS_PLAN_ID = process.env.EXPO_PUBLIC_PAYPAL_SANDBOX_MODELS_PLAN_ID ?? "";
+const CLIENT_ID = "Affr36jAFzGczUhVi0mEtl010aM4IDw5t9Arx-MphaXVYjTu3Sk-4kCioXWNUp1JMIRJnit0g_dwn2kv";
+const MODELS_PLAN_ID = "P-8YS39059PY287903WNKFXIVI";
 
 function loadSandboxSdk() {
   return new Promise<void>((resolve, reject) => {
