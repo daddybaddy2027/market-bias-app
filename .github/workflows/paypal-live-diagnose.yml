@@ -1,0 +1,14 @@
+name: PayPal live diagnose
+on:
+  push:
+    branches: [agent/paypal-live-diagnose]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Supabase PayPal config health
+        run: |
+          set -euo pipefail
+          curl -fsS https://xovpvbinuvflsygpwgxt.supabase.co/functions/v1/paypal-config-health
