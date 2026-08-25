@@ -12,27 +12,20 @@ declare global {
 export type PayPalProduct = "models" | "outlook" | "complete";
 type StatusKind = "idle" | "loading" | "success" | "error";
 
+type PublicPayPalConfig = {
+  configured: boolean;
+  environment: "live";
+  clientId: string;
+  plans: Record<PayPalProduct, string>;
+};
+
 const PRODUCT_COPY: Record<PayPalProduct, { title: string; price: string }> = {
   models: { title: "Models", price: "€24.99 / month" },
   outlook: { title: "Outlook", price: "€25 / month" },
   complete: { title: "Complete", price: "€50 / month" },
 };
 
-function planIdFor(product: PayPalProduct) {
-  if (product === "models") {
-    return (
-      process.env.EXPO_PUBLIC_PAYPAL_MODELS_PLAN_ID ??
-      process.env.EXPO_PUBLIC_PAYPAL_PRO_MONTHLY_PLAN_ID ??
-      ""
-    );
-  }
-
-  if (product === "outlook") {
-    return process.env.EXPO_PUBLIC_PAYPAL_OUTLOOK_PLAN_ID ?? "";
-  }
-
-  return process.env.EXPO_PUBLIC_PAYPAL_COMPLETE_PLAN_ID ?? "";
-}
+let publicConfigPromise: Promise<PublicPayPalConfig> | null = null;
 
 function makeContainerId(product: PayPalProduct, userId?: string | null) {
   const suffix = String(userId ?? "guest")
@@ -40,6 +33,36 @@ function makeContainerId(product: PayPalProduct, userId?: string | null) {
     .slice(0, 32);
 
   return `paypal-subscribe-${product}-${suffix}`;
+}
+
+async function loadPublicPayPalConfig() {
+  const supabaseUrl = String(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+
+  if (!supabaseUrl) {
+    throw new Error("Supabase checkout configuration URL is missing.");
+  }
+
+  if (!publicConfigPromise) {
+    publicConfigPromise = fetch(`${supabaseUrl}/functions/v1/paypal-public-config`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data?.configured || !data?.clientId || !data?.plans) {
+          throw new Error(data?.error ?? "PayPal checkout configuration could not be loaded.");
+        }
+
+        return data as PublicPayPalConfig;
+      })
+      .catch((error) => {
+        publicConfigPromise = null;
+        throw error;
+      });
+  }
+
+  return publicConfigPromise;
 }
 
 function loadPayPalSdk(clientId: string) {
@@ -74,6 +97,7 @@ function loadPayPalSdk(clientId: string) {
 
     const script = document.createElement("script");
     script.id = "paypal-sdk-subscriptions";
+    script.dataset.clientId = clientId;
     script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(
       clientId
     )}&vault=true&intent=subscription&components=buttons`;
@@ -113,8 +137,6 @@ export function PayPalSubscribeButton({
   const [message, setMessage] = useState<string | null>(null);
   const renderedRef = useRef(false);
 
-  const clientId = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID ?? "";
-  const planId = planIdFor(product);
   const copy = PRODUCT_COPY[product];
   const active = product === "models"
     ? hasModelsAccess
@@ -129,15 +151,6 @@ export function PayPalSubscribeButton({
   useEffect(() => {
     if (Platform.OS !== "web") return;
     if (!isAuthenticated || active || !user?.id) return;
-
-    if (!clientId || !planId) {
-      setStatus("error");
-      setMessage(
-        `PayPal ${copy.title} checkout is not configured. The matching client and plan IDs must be added to Vercel.`
-      );
-      return;
-    }
-
     if (renderedRef.current) return;
 
     let cancelled = false;
@@ -147,6 +160,15 @@ export function PayPalSubscribeButton({
       try {
         setStatus("loading");
         setMessage(`Loading secure PayPal checkout for ${copy.title}...`);
+
+        const config = await loadPublicPayPalConfig();
+        const clientId = config.clientId;
+        const planId = config.plans[product];
+
+        if (!clientId || !planId) {
+          throw new Error(`PayPal ${copy.title} checkout is not configured.`);
+        }
+
         await loadPayPalSdk(clientId);
         if (cancelled) return;
 
@@ -233,11 +255,9 @@ export function PayPalSubscribeButton({
     };
   }, [
     active,
-    clientId,
     containerId,
     copy.title,
     isAuthenticated,
-    planId,
     product,
     refreshProfile,
     user?.id,
