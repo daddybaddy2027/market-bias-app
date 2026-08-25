@@ -17,6 +17,18 @@ function arrow(value?: string | null) {
   return text.includes("bull") ? "↗" : text.includes("bear") ? "↘" : "→";
 }
 
+function liveAccuracyText(asset?: ApiAsset) {
+  const raw = asset as any;
+  const value = Number(raw?.live_direction_accuracy);
+
+  if (!Number.isFinite(value)) {
+    return "Collecting";
+  }
+
+  const percentage = Math.abs(value) <= 1 ? value * 100 : value;
+  return `${percentage.toFixed(1)}%`;
+}
+
 function ModelCard({ model, asset, userIsPro }: {
   model: ModelDefinition;
   asset?: ApiAsset;
@@ -38,6 +50,31 @@ function ModelCard({ model, asset, userIsPro }: {
     ? router.push("/pricing" as never)
     : router.push(`/asset/${modelRoute(model)}` as never);
 
+  if (locked) {
+    return (
+      <Pressable onPress={open} className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5 active:opacity-70">
+        <View className="flex-row items-start justify-between">
+          <View className="flex-1 pr-3">
+            <Text className="text-xl font-black text-white">{model.displayName}</Text>
+            <Text className="mt-1 text-sm text-zinc-500">{model.asset} · {model.horizonH}h</Text>
+          </View>
+          <View className={`rounded-full border px-3 py-1 ${classes.border} ${classes.bg}`}>
+            <Text className={`text-[10px] font-black ${classes.text}`}>PRO LOCKED</Text>
+          </View>
+        </View>
+
+        <View className="mt-5 rounded-3xl border border-violet-500/25 bg-violet-500/5 p-5">
+          <Text className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+            Current live accuracy
+          </Text>
+          <Text className="mt-2 text-4xl font-black text-cyan-300">
+            {liveAccuracyText(asset)}
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable onPress={open} className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5 active:opacity-70">
       <View className="flex-row items-start justify-between">
@@ -46,12 +83,12 @@ function ModelCard({ model, asset, userIsPro }: {
           <Text className="mt-1 text-sm text-zinc-500">{model.asset} · {model.horizonH}h</Text>
         </View>
         <View className={`rounded-full border px-3 py-1 ${classes.border} ${classes.bg}`}>
-          <Text className={`text-[10px] font-black ${classes.text}`}>{locked ? "PRO LOCKED" : bias.toUpperCase()}</Text>
+          <Text className={`text-[10px] font-black ${classes.text}`}>{bias.toUpperCase()}</Text>
         </View>
       </View>
 
       <View className="mt-5 flex-row items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
-        <Text className={`text-6xl font-black ${classes.text}`}>{locked ? "◇" : arrow(bias)}</Text>
+        <Text className={`text-6xl font-black ${classes.text}`}>{arrow(bias)}</Text>
         <View className="flex-1">
           <Text className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Directional read</Text>
           <Text className={`mt-1 text-base font-black ${classes.text}`}>{momentum}</Text>
@@ -59,10 +96,10 @@ function ModelCard({ model, asset, userIsPro }: {
       </View>
 
       <View className="mt-3 flex-row flex-wrap gap-2">
-        <Metric label="Confidence" value={locked ? "Hidden" : pct(raw?.confidence, 0)} />
-        <Metric label="Confirmations" value={locked ? "Hidden" : String(confirmations || (bias === "Neutral" ? 0 : 1))} />
+        <Metric label="Confidence" value={pct(raw?.confidence, 0)} />
+        <Metric label="Confirmations" value={String(confirmations || (bias === "Neutral" ? 0 : 1))} />
         {model.kind === "hybrid" ? (
-          <Metric label="Model range" value={locked ? "Hidden" : currentValue(asset, ["expectedRange", "expected_range_text"], "Awaiting range")} />
+          <Metric label="Model range" value={currentValue(asset, ["expectedRange", "expected_range_text"], "Awaiting range")} />
         ) : null}
       </View>
 
