@@ -3,3 +3,8 @@
 
 [functions.paypal-webhook]
 verify_jwt = false
+
+# Public checkout configuration returns only the PayPal client ID and plan IDs.
+# It never returns client secrets or webhook identifiers.
+[functions.paypal-public-config]
+verify_jwt = false
