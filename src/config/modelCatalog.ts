@@ -49,9 +49,6 @@ export type ModelDefinition = {
   secondaryPerformance?: PerformanceStat[];
 };
 
-// Only models that currently satisfy the commercial production policy belong
-// here. Quarantined, research and shadow engines remain outside the app until
-// their independent non-overlapping live sample clears the release threshold.
 export const MODEL_CATALOG: ModelDefinition[] = [
   {
     order: 1,
@@ -62,18 +59,29 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     displayName: "GBPUSD 12h Final V2",
     shortName: "GBPUSD 12h",
     kind: "direction",
-    tier: "Pro",
+    tier: "Free",
     family: "clean_pro_final_app_v2",
-    purpose: "Selective 12-hour GBPUSD directional model with stored production history.",
+    purpose: "Selective GBPUSD 12-hour directional model.",
     status: "production",
-    performance: {
-      source: "collecting",
-      label: "Live dual scorecard",
-      note: "All published predictions and independent non-overlapping episodes are calculated separately from stored outcomes.",
-    },
+    performance: { source: "collecting", label: "Live accuracy" },
   },
   {
     order: 2,
+    modelKey: "AUDUSD_12H_MLP_DIRECTION",
+    aliases: ["AUDUSD_12H_MLP_DIRECTION"],
+    asset: "AUDUSD",
+    horizonH: 12,
+    displayName: "AUDUSD 12h MLP Direction",
+    shortName: "AUDUSD 12h",
+    kind: "direction",
+    tier: "Pro",
+    family: "mlp_direction",
+    purpose: "Selective AUDUSD 12-hour MLP direction model.",
+    status: "production",
+    performance: { source: "collecting", label: "Live accuracy" },
+  },
+  {
+    order: 3,
     modelKey: "EURUSD_3H_PROD_V1",
     aliases: ["EURUSD_3H_PROD_V1", "PROD_V1"],
     asset: "EURUSD",
@@ -83,16 +91,12 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     kind: "direction",
     tier: "Pro",
     family: "prod_v1",
-    purpose: "Short-horizon EURUSD production direction model.",
+    purpose: "Short-horizon EURUSD directional model.",
     status: "production",
-    performance: {
-      source: "collecting",
-      label: "Live dual scorecard",
-      note: "All published predictions and independent non-overlapping episodes are calculated separately from stored outcomes.",
-    },
+    performance: { source: "collecting", label: "Live accuracy" },
   },
   {
-    order: 3,
+    order: 4,
     modelKey: "EURUSD_6H_FINAL_APP_V2",
     aliases: ["EURUSD_6H_FINAL_APP_V2"],
     asset: "EURUSD",
@@ -102,13 +106,39 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     kind: "direction",
     tier: "Pro",
     family: "clean_pro_final_app_v2",
-    purpose: "Medium-horizon EURUSD directional model selected from the frozen production set.",
+    purpose: "Medium-horizon EURUSD directional model.",
     status: "production",
-    performance: {
-      source: "collecting",
-      label: "Live dual scorecard",
-      note: "All published predictions and independent non-overlapping episodes are calculated separately from stored outcomes.",
-    },
+    performance: { source: "collecting", label: "Live accuracy" },
+  },
+  {
+    order: 5,
+    modelKey: "EURUSD_12H_CONSENSUS",
+    aliases: ["EURUSD_12H_CONSENSUS"],
+    asset: "EURUSD",
+    horizonH: 12,
+    displayName: "EURUSD 12h Model Consensus",
+    shortName: "EURUSD 12h Consensus",
+    kind: "consensus_direction",
+    tier: "Pro",
+    family: "consensus_direction",
+    purpose: "Consensus directional read requiring agreement across the selected EURUSD engines.",
+    status: "production",
+    performance: { source: "collecting", label: "Live accuracy" },
+  },
+  {
+    order: 6,
+    modelKey: "USDJPY_12H_MLP_DIRECTION_RANGE",
+    aliases: ["USDJPY_12H_MLP_DIRECTION_RANGE"],
+    asset: "USDJPY",
+    horizonH: 12,
+    displayName: "USDJPY 12h MLP Direction & Range",
+    shortName: "USDJPY 12h",
+    kind: "hybrid",
+    tier: "Pro",
+    family: "mlp_direction_range",
+    purpose: "Selective USDJPY direction model with an accompanying range estimate.",
+    status: "production",
+    performance: { source: "collecting", label: "Live accuracy" },
   },
 ];
 
